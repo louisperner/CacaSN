@@ -26,5 +26,22 @@ class TesteAlertas(unittest.TestCase):
         run.assert_not_called()
 
 
+class TesteAprovacao(unittest.TestCase):
+    def janela(self, saida, codigo=0):
+        r = mock.Mock(returncode=codigo, stdout=saida)
+        with mock.patch.object(alertas.sys, "platform", "darwin"), mock.patch.object(alertas.subprocess, "run", return_value=r):
+            return alertas.pedir_aprovacao("t", "x")
+
+    def test_so_o_clique_em_enviar_aprova(self):
+        self.assertTrue(self.janela("button returned:Enviar ao TNS, gave up:false"))
+        self.assertFalse(self.janela("button returned:Depois, gave up:false"))
+        self.assertFalse(self.janela("button returned:Depois, gave up:true"))  # ninguém respondeu
+        self.assertFalse(self.janela("", codigo=1))  # janela fechada / erro
+
+    def test_fora_do_macos_nunca_aprova(self):
+        with mock.patch.object(alertas.sys, "platform", "linux"):
+            self.assertFalse(alertas.pedir_aprovacao("t", "x"))
+
+
 if __name__ == "__main__":
     unittest.main()

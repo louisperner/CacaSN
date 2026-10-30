@@ -99,6 +99,22 @@ inferred). It never sends anything: add `reporter` and `reporting_groupid` to `t
 https://sandbox.wis-tns.org, then submit on TNS. Professional bots report clear ZTF supernovae within
 hours, so speed matters: schedule `--avisar` every few hours.
 
+Before reporting, `cacasn --ficha <OID>` runs the checks that used to be done by hand, all through
+services outside the CDS (which takes SIMBAD and VizieR down when it is offline): TNS within 5", Gaia DR3
+from the ESA archive (a source with parallax > 5 sigma means a star), known minor planets from SkyBoT at
+the detection time, the host galaxy and its redshift from NED (absolute magnitude at the host distance),
+and the last ZTF non-detection from ALeRCE (TNS rejects a report without it; the deepest limit of the
+last night is used). It refuses with a single detection and warns when the source sits on the galaxy
+nucleus (AGN/TDE risk). The draft then carries the non-detection and the host in the remarks.
+
+`cacasn --enviar <OID>` shows that summary and sends the report through the TNS API only after you type
+the OID to confirm (`--sandbox` for the test server); the TNS reply (AT name or errors) is printed and
+logged, and the new AT is added to the follow-up list. Reporting through the API needs a TNS group:
+create one, link your bot to it and put its ID in `reporting_groupid`. With `"aprovar_por_dialogo": true`
+in `tns.json`, a scheduled `--avisar` run also opens a macOS dialog for each new ZTF candidate whose
+check sheet is clean ("Depois" / "Enviar ao TNS"); nothing is sent without the click, and the dialog
+closes by itself after 30 minutes.
+
 ## Following your discoveries
 
 `cacasn --acompanhar 2026agsv` adds a TNS object to `acompanhar.json`. Every run then reads each
@@ -152,6 +168,10 @@ reportado. Só biblioteca padrão do Python; o aviso usa notificação do macOS 
 - `uv run cacasn --novas-anas` caça novas anãs em erupção (CV/Nova da ALeRCE fora do TNS e do VSX) e gera
   `novas_anas.html`; com `--avisar` isso roda junto a cada 3 h e avisa cada uma só uma vez.
 - Para consultar e reportar no TNS: crie conta e um bot; use as variáveis do `.env.example` ou `tns.json`.
+- `uv run cacasn --ficha OID` faz as checagens antes de reportar (TNS, Gaia da ESA, SkyBoT, NED e a última
+  não-detecção); `uv run cacasn --enviar OID` mostra a ficha e envia pela API só depois de você digitar o
+  OID (precisa de um grupo no TNS ligado ao bot, em `reporting_groupid`). Com `"aprovar_por_dialogo": true`
+  no `tns.json`, o `--avisar` abre uma janela "Enviar ao TNS" para cada candidato novo com a ficha limpa.
 - Quem reporta primeiro ao TNS fica como descobridor. Os robôs profissionais reportam as supernovas
   claras do ZTF em horas — a chance está em rodar com frequência e julgar os recortes.
 

@@ -8,7 +8,20 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
-from . import acompanhamento, alertas, avaliacao, catalogos, curva, novas_anas, novidades, registro, rubin, tns_local
+from . import (
+    acompanhamento,
+    alertas,
+    avaliacao,
+    catalogos,
+    curva,
+    envio,
+    ficha,
+    novas_anas,
+    novidades,
+    registro,
+    rubin,
+    tns_local,
+)
 from .rascunho import rascunho
 from .rede import gravar_json, gravar_texto, ler_json
 from .relatorio import relatorio
@@ -170,7 +183,11 @@ def rodar(
             top=[[i["oid"], i["nota"], i["conhecido"]] for i in sorted(sel, key=lambda x: -x["nota"])[:5]],
         )
     if avisar:
-        alertas.avisar_novos(itens, pasta)
+        novos = alertas.avisar_novos(itens, pasta)
+        try:
+            oferecer_envio(novos, pasta)
+        except Exception as e:  # erro no envio não derruba a rodada
+            log.error("oferecer_envio_falhou", erro=repr(e))
     acompanhamento.verificar(tns, pasta)
     vistos = {str(i["oid"]).replace("LSST ", "") for i in itens} | set(ler_json(os.path.join(pasta, "tns_cache.json"), {}))
     novidades.verificar(tns, pasta, vistos, buscar_hoje=novidades.buscar_modificados)
@@ -182,10 +199,21 @@ def rodar(
     return itens
 
 
+def _candidato(oid: str, pasta: str) -> dict[str, Any] | None:
+    itens = ler_json(os.path.join(pasta, "resultados.json"), [])
+    return next((i for i in itens if i["oid"] == oid or i["oid"] == f"LSST {oid}"), None)
+
+
+def _gravar_rascunho(it: dict[str, Any], relatorio: dict[str, Any], pasta: str) -> str:
+    os.makedirs(os.path.join(pasta, "rascunhos"), exist_ok=True)
+    destino = os.path.join(pasta, "rascunhos", f"{it['oid'].replace(' ', '_')}.json")
+    gravar_json(destino, relatorio, indent=2, ensure_ascii=False)
+    return destino
+
+
 def gerar_rascunho(oid: str, pasta: str = PASTA) -> int:
     """Escreve rascunhos/<oid>.json para revisar e enviar pelo site do TNS."""
-    itens = ler_json(os.path.join(pasta, "resultados.json"), [])
-    it: dict[str, Any] | None = next((i for i in itens if i["oid"] == oid or i["oid"] == f"LSST {oid}"), None)
+    it = _candidato(oid, pasta)
     anas = ler_json(os.path.join(pasta, novas_anas.SAIDA_JSON), [])
     ana: dict[str, Any] | None = next((i for i in anas if i["oid"] == oid), None)
     if it is None:
@@ -200,14 +228,99 @@ def gerar_rascunho(oid: str, pasta: str = PASTA) -> int:
         if not it["conhecido"].startswith("NÃO"):
             print(f"atenção: {it['conhecido']}")
         relatorio, pendencias = rascunho(it, catalogos.tns_carregar(pasta))
-    os.makedirs(os.path.join(pasta, "rascunhos"), exist_ok=True)
-    destino = os.path.join(pasta, "rascunhos", f"{it['oid'].replace(' ', '_')}.json")
-    gravar_json(destino, relatorio, indent=2, ensure_ascii=False)
-    print(destino)
+    print(_gravar_rascunho(it, relatorio, pasta))
     for p in pendencias:
         print(f"  pendente: {p}")
     print("  nada foi enviado. Revise e envie pelo site do TNS (teste antes em https://sandbox.wis-tns.org).")
     return 0
+
+
+def preparar(oid: str, pasta: str = PASTA) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[str]] | None:
+    """Ficha + rascunho de um candidato da última rodada (não envia)."""
+    it = _candidato(oid, pasta)
+    if it is None:
+        print(f"{oid} não está no último resultados.json")
+        return None
+    cfg = catalogos.tns_carregar(pasta)
+    f = ficha.montar(it, cfg)
+    os.makedirs(os.path.join(pasta, "rascunhos"), exist_ok=True)
+    gravar_json(os.path.join(pasta, "rascunhos", f"{it['oid'].replace(' ', '_')}.ficha.json"), f, indent=2, ensure_ascii=False)
+    relatorio, pendencias = rascunho(it, cfg, f)
+    _gravar_rascunho(it, relatorio, pasta)
+    return it, f, relatorio, pendencias
+
+
+def mostrar_ficha(oid: str, pasta: str = PASTA) -> int:
+    r = preparar(oid, pasta)
+    if r is None:
+        return 1
+    _, f, _, pendencias = r
+    print(ficha.texto(f))
+    for p in pendencias:
+        print(f"  pendente: {p}")
+    print("  nada foi enviado.")
+    return 0
+
+
+def oferecer_envio(novos: list[dict[str, Any]], pasta: str, aprovar: Any = alertas.pedir_aprovacao) -> list[str]:
+    """No agendamento: para cada candidato novo do ZTF com ficha pronta, pergunta numa
+    janela se envia. Só com "aprovar_por_dialogo": true no tns.json; devolve os nomes AT."""
+    cfg = catalogos.tns_carregar(pasta) or {}
+    if not cfg.get("aprovar_por_dialogo"):
+        return []
+    log, nomes = registro.obter(), []
+    for novo in novos:
+        if novo.get("fonte", "ztf") != "ztf":
+            continue
+        r = preparar(str(novo["oid"]), pasta)
+        if r is None:
+            continue
+        it, f, relatorio, pendencias = r
+        if not f["pronto"] or pendencias:
+            log.info("ficha_nao_pronta", oid=it["oid"], motivos=f["motivos"], pendencias=pendencias)
+            continue
+        if not aprovar(f"CacaSN: enviar {it['oid']}?", ficha.texto(f)):
+            log.info("envio_adiado", oid=it["oid"])
+            continue
+        res = envio.enviar(relatorio, cfg)
+        log.warning("envio_tns", oid=it["oid"], sandbox=False, ok=res["ok"], nome=res["nome"], erros=res["erros"])
+        if res["ok"] and res["nome"]:
+            acompanhamento.adicionar(pasta, res["nome"])
+            nomes.append(res["nome"])
+            alertas.notificar("CacaSN: enviado!", f"{it['oid']} virou AT {res['nome']}", os.path.join(pasta, "report.html"))
+        else:
+            alertas.notificar(
+                "CacaSN: o TNS recusou", f"{it['oid']}: " + "; ".join(res["erros"])[:180], os.path.join(pasta, "report.html")
+            )
+    return nomes
+
+
+def enviar(oid: str, pasta: str = PASTA, sandbox: bool = False, perguntar: Any = input) -> int:
+    """Mostra a ficha e só envia se o usuário digitar o OID para confirmar."""
+    r = preparar(oid, pasta)
+    if r is None:
+        return 1
+    it, f, relatorio, pendencias = r
+    print(ficha.texto(f))
+    if not f["pronto"] or pendencias:
+        for p in pendencias:
+            print(f"  pendente: {p}")
+        print("  não enviado: resolva os motivos acima primeiro.")
+        return 1
+    destino = "SANDBOX (teste)" if sandbox else "TNS (público, definitivo)"
+    resposta = perguntar(f"Enviar {it['oid']} ao {destino}? Digite o OID para confirmar: ").strip()
+    if resposta != str(it["oid"]):
+        print("  não enviado.")
+        return 1
+    res = envio.enviar(relatorio, catalogos.tns_carregar(pasta) or {}, sandbox=sandbox)
+    registro.obter().warning("envio_tns", oid=it["oid"], sandbox=sandbox, ok=res["ok"], nome=res["nome"], erros=res["erros"])
+    if res["ok"]:
+        print(f"  enviado: AT {res['nome']} (relatório {res['report_id']})")
+        if not sandbox and res["nome"]:
+            acompanhamento.adicionar(pasta, res["nome"])
+        return 0
+    print(f"  o TNS recusou (relatório {res['report_id']}): " + "; ".join(res["erros"]))
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -238,6 +351,9 @@ def main(argv: list[str] | None = None) -> int:
         "--acompanhar", metavar="NOME", help="passa a acompanhar um objeto do TNS (ex.: 2026agsv) e avisa quando for classificado"
     )
     ap.add_argument("--rascunho", metavar="OID", help="gera o relatório para o TNS de um candidato da última rodada (não envia)")
+    ap.add_argument("--ficha", metavar="OID", help="checagens antes de reportar (TNS, Gaia, SkyBoT, NED) e rascunho; não envia")
+    ap.add_argument("--enviar", metavar="OID", help="mostra a ficha e envia ao TNS pela API depois que você digita o OID")
+    ap.add_argument("--sandbox", action="store_true", help="com --enviar: usa o sandbox do TNS (teste, não público)")
     ap.add_argument(
         "--novas-anas",
         action="store_true",
@@ -246,6 +362,11 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.rascunho:
         return gerar_rascunho(args.rascunho)
+    if args.ficha:
+        return mostrar_ficha(args.ficha)
+    if args.enviar:
+        registro.configurar(os.path.join(PASTA, "cacasn.log"))
+        return enviar(args.enviar, sandbox=args.sandbox)
     if args.acompanhar:
         acompanhamento.adicionar(PASTA, args.acompanhar)
         acompanhamento.verificar(catalogos.tns_carregar(PASTA), PASTA)

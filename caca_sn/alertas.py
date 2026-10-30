@@ -36,6 +36,24 @@ def notificar(titulo: str, texto: str, relatorio: str) -> None:
         subprocess.run(["open", relatorio], check=False)
 
 
+ENVIAR = "Enviar ao TNS"
+# a janela some sozinha depois disso e conta como "Depois": nada é enviado sem clique
+ESPERA_APROVACAO = 1800
+
+
+def pedir_aprovacao(titulo: str, texto: str, espera: int = ESPERA_APROVACAO) -> bool:
+    """Janela do macOS com os botões 'Depois' e 'Enviar ao TNS'. Só devolve True com o
+    clique em Enviar; fora do macOS, sem resposta ou com erro, devolve False."""
+    if sys.platform != "darwin":
+        return False
+    script = (
+        f"display dialog {json.dumps(texto)} with title {json.dumps(titulo)} "
+        f'buttons {{"Depois", {json.dumps(ENVIAR)}}} default button "Depois" giving up after {int(espera)}'
+    )
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
+    return r.returncode == 0 and f"button returned:{ENVIAR}" in r.stdout and "gave up:true" not in r.stdout
+
+
 def avisar_novos(itens: list[dict[str, Any]], pasta: str) -> list[dict[str, Any]]:
     """Avisa uma vez por objeto; devolve os que foram avisados agora."""
     caminho = os.path.join(pasta, "avisados.json")
