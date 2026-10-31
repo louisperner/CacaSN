@@ -121,7 +121,9 @@ closes by itself after 30 minutes.
 `cacasn --acompanhar 2026agsv` adds a TNS object to `acompanhar.json`. Every run then reads each
 followed object from the TNS API and sends one notification when someone classifies it by spectrum
 (e.g. "AT 2026agsv -> SN 2026agsv = SN Ia (z = 0.05)") — the same news as the AstroNotes emails,
-without needing the mailbox.
+without needing the mailbox. It also notifies when ZTF (ALeRCE) or Rubin (Fink) detects a followed
+object again, using the internal names stored on TNS — useful to know whether a transient is still
+there before asking for a spectrum.
 
 ## TNS news without the mailbox
 
