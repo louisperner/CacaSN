@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import os
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
@@ -157,7 +160,10 @@ def rodar(
     pasta: str = PASTA,
     fontes: tuple[str, ...] = FONTES,
     a_partir: float = 0,
+    rapido: bool = False,
 ) -> list[dict[str, Any]]:
+    """Rodada completa; com `rapido`, só busca e avisa candidatos (sem acompanhamento, novidades do TNS
+    nem novas anãs) e junta o resultado ao `resultados.json` da última rodada completa."""
     log = registro.obter()
     tns = catalogos.tns_carregar(pasta)
     itens: list[dict[str, Any]] = []
@@ -169,8 +175,9 @@ def rodar(
     for it in itens:
         if (m := curva.motivo_subida(it.get("curva", []), it.get("idade", 99))) and m not in it["motivos"]:
             it["motivos"].append(m)
-    gravar_json(os.path.join(pasta, "resultados.json"), itens, indent=1)
-    gravar_texto(os.path.join(pasta, "report.html"), relatorio(itens))
+    salvos = juntar(ler_json(os.path.join(pasta, "resultados.json"), []), itens) if rapido else itens
+    gravar_json(os.path.join(pasta, "resultados.json"), salvos, indent=1)
+    gravar_texto(os.path.join(pasta, "report.html"), relatorio(salvos))
     for fonte in fontes:
         sel = [i for i in itens if i.get("fonte") == fonte]
         log.info(
@@ -188,6 +195,8 @@ def rodar(
             oferecer_envio(novos, pasta)
         except Exception as e:  # erro no envio não derruba a rodada
             log.error("oferecer_envio_falhou", erro=repr(e))
+    if rapido:
+        return itens
     acompanhamento.verificar(tns, pasta)
     vistos = {str(i["oid"]).replace("LSST ", "") for i in itens} | set(ler_json(os.path.join(pasta, "tns_cache.json"), {}))
     novidades.verificar(tns, pasta, vistos, buscar_hoje=novidades.buscar_modificados)
@@ -197,6 +206,24 @@ def rodar(
         except Exception as e:  # falha aqui não derruba a rodada de supernovas
             log.error("novas_anas_falhou", erro=repr(e))
     return itens
+
+
+def juntar(antigos: list[dict[str, Any]], novos: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Os novos substituem os antigos de mesmo OID; o resto da rodada anterior fica."""
+    ids = {i["oid"] for i in novos}
+    return novos + [i for i in antigos if i.get("oid") not in ids]
+
+
+@contextlib.contextmanager
+def trava(pasta: str) -> Iterator[bool]:
+    """True se esta rodada pegou a trava; False se outra rodada ainda está rodando."""
+    with open(os.path.join(pasta, ".cacasn.lock"), "w") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            yield False
+            return
+        yield True
 
 
 def _candidato(oid: str, pasta: str) -> dict[str, Any] | None:
@@ -359,6 +386,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="só caça novas anãs em erupção (CV/Nova da ALeRCE fora do TNS e do VSX); grava novas_anas.html",
     )
+    ap.add_argument(
+        "--rapido",
+        action="store_true",
+        help="rodada curta para agendar a cada 30 min: alertas dos últimos 2 dias, sem acompanhamento/novidades/novas anãs",
+    )
     args = ap.parse_args(argv)
     if args.rascunho:
         return gerar_rascunho(args.rascunho)
@@ -379,10 +411,15 @@ def main(argv: list[str] | None = None) -> int:
         print(os.path.join(PASTA, novas_anas.SAIDA_HTML))
         return 0
     fontes = FONTES if args.fonte == "ambas" else (args.fonte,)
-    try:
-        rodar(args.dias, args.prob, args.avisar, fontes=fontes, a_partir=args.a_partir)
-    except Exception as e:
-        registro.obter().error("rodada_falhou", erro=repr(e))
-        raise
+    dias = min(args.dias, 2) if args.rapido else args.dias
+    with trava(PASTA) as livre:
+        if not livre:
+            registro.obter().info("rodada_pulada", motivo="outra rodada em andamento")
+            return 0
+        try:
+            rodar(dias, args.prob, args.avisar, fontes=fontes, a_partir=args.a_partir, rapido=args.rapido)
+        except Exception as e:
+            registro.obter().error("rodada_falhou", erro=repr(e))
+            raise
     print(os.path.join(PASTA, "report.html"))
     return 0
