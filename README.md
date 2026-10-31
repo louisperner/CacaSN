@@ -94,8 +94,9 @@ the run takes seconds (and every candidate shows "TNS não consultado").
 To report: `cacasn --rascunho <OID>` writes `rascunhos/<OID>.json`, an AT report in the TNS 2.0 bulk
 format (`api/set/bulk-report`) with position, discovery date, the light curve as photometry and the
 TNS IDs of the data source, camera and filters (read from objects already on TNS: ZTF = 48, ZTF-Cam =
-196, g/r/i = 110/111/112; Rubin = 165, LSSTCam = 287, g/i/z = 161/163/164 — u/r/y = 160/162/165 are
-inferred). It never sends anything: add `reporter` and `reporting_groupid` to `tns.json`, try it on
+196, g/r/i = 110/111/112; Rubin = 165, LSSTCam = 287, u/g/r/i/z/y = 160–165, checked on the TNS AT
+form). For a Rubin source with nothing in the template image and no earlier night in Fink's forced
+photometry, the non-detection is given as archival information ("Other"). It never sends anything: add `reporter` and `reporting_groupid` to `tns.json`, try it on
 https://sandbox.wis-tns.org, then submit on TNS. Professional bots report clear ZTF supernovae within
 hours, so speed matters: schedule `--avisar` every few hours.
 

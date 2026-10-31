@@ -46,12 +46,13 @@ class TesteRascunho(unittest.TestCase):
         self.assertEqual({p["instrumentid"] for p in at["photometry"].values()}, {"196"})
         self.assertEqual(at["reporting_groupid"], "999")
 
-    def test_rubin_e_filtro_inferido(self):
-        r, pend = rascunho(RUBIN, CFG)
+    def test_rubin_filtros(self):
+        r, _ = rascunho(RUBIN, CFG)
         at = r["at_report"]["0"]
         self.assertEqual(at["data_source_groupid"], "165")
         self.assertEqual(at["internal_name"], "170")
-        self.assertTrue(any("inferidos" in p for p in pend))  # usou o r do LSST
+        self.assertEqual([p["filterid"] for p in at["photometry"].values()], ["161", "162"])  # g e r do LSST
+        self.assertEqual({p["instrumentid"] for p in at["photometry"].values()}, {"287"})
 
     def test_observacoes_em_ingles(self):
         at = rascunho(dict(ZTF, motivos=["subindo 0.5 mag/dia"], drb=0.99, prob=0.8), CFG)[0]["at_report"]["0"]
@@ -71,6 +72,17 @@ class TesteRascunho(unittest.TestCase):
         self.assertEqual(nd["archival_remarks"], "")
         self.assertIn("WISEA J1 (z = 0.0528, NED) at 1.3 arcsec; M ~ -17.9", at["remarks"])
         self.assertIn("No Gaia DR3 source", at["remarks"])
+
+    def test_rubin_fonte_nova_usa_arquivo(self):
+        r, pend = rascunho(dict(RUBIN, motivos=["fonte nova"], curva=[(0.0, 1, 20.0)]), CFG)
+        nd = r["at_report"]["0"]["non_detection"]
+        self.assertEqual(nd["archiveid"], "0")
+        self.assertIn("Rubin/LSST template", nd["archival_remarks"])
+        self.assertFalse(any("non_detection" in p for p in pend))
+
+    def test_rubin_fonte_antiga_continua_pendente(self):
+        _, pend = rascunho(dict(RUBIN, motivos=["fonte já existia na referência (20% do brilho é novo)"]), CFG)
+        self.assertTrue(any("non_detection" in p for p in pend))
 
     def test_sem_nao_deteccao_avisa(self):
         r, pend = rascunho(ZTF, CFG)

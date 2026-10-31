@@ -14,10 +14,11 @@ FONTE = {"ztf": "48", "rubin": "165"}  # discovery data source: ZTF, Rubin
 INSTRUMENTO = {"ztf": "196", "rubin": "287"}  # ZTF-Cam, LSSTCam
 FILTRO = {
     "ztf": {1: "110", 2: "111", 3: "112"},  # g, r, i do ZTF (confirmados)
-    # g=161, i=163, z=164 confirmados; u=160, r=162, y=165 inferidos pela sequência
+    # u..y = 160..165, conferidos no formulário de AT do TNS (31/10/2026)
     "rubin": {0: "160", 1: "161", 2: "162", 3: "163", 4: "164", 5: "165"},
 }
 AB_MAG = "1"
+ARQUIVO_OUTRO = "0"
 
 
 def data_tns(mjd: float) -> str:
@@ -45,8 +46,6 @@ def rascunho(
     reporter = cfg.get("reporter") or ""
     if not reporter:
         pendencias.append("reporter: seu nome como deve aparecer no TNS (ponha em tns.json)")
-    if fonte == "rubin" and any(f in (0, 2, 5) for _, f, _ in it["curva"]):
-        pendencias.append("filtros u/r/y do LSST usam IDs inferidos (160/162/165): confira no sandbox")
     fotometria = {}
     for i, (t, f, mag) in enumerate(it["curva"]):
         fotometria[str(i)] = {
@@ -84,7 +83,9 @@ def rascunho(
             "archival_remarks": "",
         }
     else:
-        pendencias.append("non_detection: sem a última não-detecção (o TNS recusa sem ela; gere a ficha)")
+        rubin_nova = fonte == "rubin" and "fonte nova" in (it.get("motivos") or [])
+        if not rubin_nova:
+            pendencias.append("non_detection: sem a última não-detecção (o TNS recusa sem ela; gere a ficha)")
         nao_det = {
             "obsdate": "",
             "limiting_flux": "",
@@ -94,8 +95,13 @@ def rascunho(
             "exptime": "",
             "observer": "",
             "comments": "",
-            "archiveid": "",
-            "archival_remarks": "No source at this position in the survey reference (template) image.",
+            # TNS: 0 = Other, 1 = SDSS, 2 = DSS (formulário de AT, out/2026)
+            "archiveid": ARQUIVO_OUTRO if rubin_nova else "",
+            "archival_remarks": (
+                "No source at this position in the Rubin/LSST template (reference) image; the transient flux is new."
+                if rubin_nova
+                else "No source at this position in the survey reference (template) image."
+            ),
         }
     relatorio = {
         "at_report": {

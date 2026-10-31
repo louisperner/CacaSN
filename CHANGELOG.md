@@ -2,6 +2,17 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.11.1] - 2026-10-31
+
+### Corrigido
+- Rubin: a ficha busca a última não-detecção na fotometria forçada do Fink (`/api/v1/fp`, S/R < 3 numa
+  noite anterior, limite = 5 x o erro); sem noite anterior e com "fonte nova" (nada na referência), o
+  rascunho usa a informação de arquivo ("Other") e deixa de ficar pendente.
+- Gaia: se a TAP da ESA não responde, a ficha usa o espelho do GAVO (`gaia.dr3lite`); Gaia, NED e SkyBoT
+  esperam 30 s e tentam 2 vezes (antes uma ficha chegava a 10 min).
+- O resumo da ficha diz "não respondeu" quando um serviço falha (antes mostrava "nenhuma fonte").
+- Filtros u/r/y do LSST (160/162/165) conferidos no formulário do TNS: saiu a pendência de "IDs inferidos".
+
 ## [0.11.0] - 2026-10-30
 
 ### Adicionado
