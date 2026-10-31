@@ -2,6 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.12.0] - 2026-10-31
+
+### Adicionado
+- Acompanhamento: além da classificação por espectro, avisa quando o ZTF (ALeRCE) ou o Rubin (Fink)
+  detectam de novo um objeto acompanhado, pelos nomes internos que o TNS guarda (ZTF26… e IDs do LSST).
+  A última detecção de cada um fica em `acompanhar.json` (`ultimas`); a primeira rodada só grava.
+
 ## [0.11.1] - 2026-10-31
 
 ### Corrigido
