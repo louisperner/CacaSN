@@ -21,6 +21,12 @@ RUBIN = {
     "curva": [(0.0, 1, 20.0), (0.5, 2, 19.9)],
 }
 CFG = {"reporting_groupid": 999, "reporter": "A. Pessoa"}
+FICHA = {
+    "pronto": True,
+    "nao_deteccao": {"mjd": 61320.5, "fid": 2, "limite": 19.18},
+    "ned": {"nome": "WISEA J1", "z": 0.0528, "sep": 1.3},
+    "M": -17.9,
+}
 
 
 class TesteData(unittest.TestCase):
@@ -31,7 +37,7 @@ class TesteData(unittest.TestCase):
 
 class TesteRascunho(unittest.TestCase):
     def test_ztf(self):
-        r, pend = rascunho(ZTF, CFG)
+        r, pend = rascunho(ZTF, CFG, FICHA)
         at = r["at_report"]["0"]
         self.assertEqual(pend, [])
         self.assertEqual(at["data_source_groupid"], "48")
@@ -54,7 +60,22 @@ class TesteRascunho(unittest.TestCase):
 
     def test_pendencias_sem_config(self):
         _, pend = rascunho(ZTF, None)
-        self.assertEqual(len(pend), 2)
+        self.assertEqual(len(pend), 3)  # grupo, nome e a não-detecção
+
+    def test_ficha_entra_no_relatorio(self):
+        at = rascunho(ZTF, CFG, FICHA)[0]["at_report"]["0"]
+        nd = at["non_detection"]
+        self.assertEqual(
+            (nd["obsdate"], nd["limiting_flux"], nd["filterid"], nd["instrumentid"]), ("2026-10-07.50000", "19.18", "111", "196")
+        )
+        self.assertEqual(nd["archival_remarks"], "")
+        self.assertIn("WISEA J1 (z = 0.0528, NED) at 1.3 arcsec; M ~ -17.9", at["remarks"])
+        self.assertIn("No Gaia DR3 source", at["remarks"])
+
+    def test_sem_nao_deteccao_avisa(self):
+        r, pend = rascunho(ZTF, CFG)
+        self.assertTrue(any("non_detection" in p for p in pend))
+        self.assertEqual(r["at_report"]["0"]["non_detection"]["obsdate"], "")
 
     def test_sem_data_e_erro(self):
         with self.assertRaises(ValueError):

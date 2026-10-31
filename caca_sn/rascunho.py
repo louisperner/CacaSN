@@ -28,9 +28,13 @@ def data_tns(mjd: float) -> str:
     return f"{data:%Y-%m-%d}" + f"{arredondado - dia:.5f}"[1:]
 
 
-def rascunho(it: dict[str, Any], cfg: dict[str, Any] | None) -> tuple[dict[str, Any], list[str]]:
-    """Relatório para um candidato e a lista do que ainda precisa de atenção."""
+def rascunho(
+    it: dict[str, Any], cfg: dict[str, Any] | None, ficha: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    """Relatório para um candidato e a lista do que ainda precisa de atenção. Com a ficha
+    (caca_sn.ficha), entram a última não-detecção e a galáxia hospedeira."""
     cfg = cfg or {}
+    ficha = ficha or {}
     fonte = it.get("fonte", "ztf")
     pendencias = []
     if it.get("mjd0") is None:
@@ -58,6 +62,41 @@ def rascunho(it: dict[str, Any], cfg: dict[str, Any] | None) -> tuple[dict[str, 
             "comments": "",
         }
     origem = "ZTF public alerts via ALeRCE" if fonte == "ztf" else "Rubin/LSST public alerts via Fink"
+    extra = ""
+    h = ficha.get("ned")
+    if h:
+        extra += f" Host galaxy {h['nome']} (z = {h['z']}, NED) at {h['sep']} arcsec"
+        extra += f"; M ~ {ficha['M']} at the host distance." if ficha.get("M") is not None else "."
+    if ficha.get("pronto"):
+        extra += " No Gaia DR3 source within 3 arcsec; no known minor planet (SkyBoT)."
+    nd = ficha.get("nao_deteccao")
+    if nd:
+        nao_det = {
+            "obsdate": data_tns(nd["mjd"]),
+            "limiting_flux": f"{nd['limite']:.2f}",
+            "flux_unitid": AB_MAG,
+            "filterid": FILTRO[fonte].get(nd["fid"], ""),
+            "instrumentid": INSTRUMENTO[fonte],
+            "exptime": "",
+            "observer": "Robot",
+            "comments": "",
+            "archiveid": "",
+            "archival_remarks": "",
+        }
+    else:
+        pendencias.append("non_detection: sem a última não-detecção (o TNS recusa sem ela; gere a ficha)")
+        nao_det = {
+            "obsdate": "",
+            "limiting_flux": "",
+            "flux_unitid": "",
+            "filterid": "",
+            "instrumentid": "",
+            "exptime": "",
+            "observer": "",
+            "comments": "",
+            "archiveid": "",
+            "archival_remarks": "No source at this position in the survey reference (template) image.",
+        }
     relatorio = {
         "at_report": {
             "0": {
@@ -72,20 +111,9 @@ def rascunho(it: dict[str, Any], cfg: dict[str, Any] | None) -> tuple[dict[str, 
                 "remarks": (
                     f"Found in {origem} with CacaSN ({REPO}). "
                     f"Real/bogus {it.get('drb', '?')}, SN probability {it.get('prob', '?')}, "
-                    f"{len(it['curva'])} detection(s)."
+                    f"{len(it['curva'])} detection(s)." + extra
                 ),
-                "non_detection": {
-                    "obsdate": "",
-                    "limiting_flux": "",
-                    "flux_unitid": "",
-                    "filterid": "",
-                    "instrumentid": "",
-                    "exptime": "",
-                    "observer": "",
-                    "comments": "",
-                    "archiveid": "",
-                    "archival_remarks": "No source at this position in the survey reference (template) image.",
-                },
+                "non_detection": nao_det,
                 "photometry": fotometria,
             }
         }

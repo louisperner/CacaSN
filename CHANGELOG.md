@@ -2,6 +2,22 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.11.0] - 2026-10-30
+
+### Adicionado
+- `--ficha OID`: checagens antes de reportar, todas fora do CDS (que derrubava SIMBAD e VizieR):
+  TNS a 5", Gaia DR3 pela TAP da ESA (paralaxe > 5 sigma = estrela), SkyBoT na hora da detecção, galáxia
+  hospedeira e redshift no NED (com magnitude absoluta) e a última não-detecção do ZTF na ALeRCE (a mais
+  profunda da última noite). Recusa com uma detecção só e avisa quando o objeto está no núcleo da galáxia.
+- `--enviar OID` (e `--sandbox`): envia o relatório pela API do TNS (`api/set/bulk-report`), lê a
+  resposta (`api/get/bulk-report-reply`) e passa a acompanhar o AT novo; só envia depois que o usuário
+  digita o OID. Com `"aprovar_por_dialogo": true` no `tns.json`, o `--avisar` abre uma janela do macOS
+  ("Depois" / "Enviar ao TNS") para cada candidato novo do ZTF com a ficha limpa; sem clique, nada sai.
+
+### Mudado
+- O rascunho leva a última não-detecção (o TNS recusa sem ela) e a galáxia hospedeira nas observações;
+  sem a não-detecção, aparece como pendência.
+
 ## [0.10.0] - 2026-10-25
 
 ### Adicionado
