@@ -27,10 +27,32 @@ class TesteRodada(unittest.TestCase):
         self.assertEqual(salvos[0]["oid"], "ZTF26teste")
         self.assertIn("ZTF26teste", html)
 
+    def _main(self, argv, livre=True):
+        trava = mock.MagicMock()
+        trava.return_value.__enter__.return_value = livre
+        with mock.patch.object(cli, "rodar") as r, mock.patch.object(cli, "trava", trava):
+            with mock.patch.object(cli.registro, "configurar"), mock.patch("builtins.print"):
+                self.assertEqual(cli.main(argv), 0)
+        return r
+
     def test_argumentos(self):
-        with mock.patch.object(cli, "rodar") as r, mock.patch.object(cli.registro, "configurar"), mock.patch("builtins.print"):
-            self.assertEqual(cli.main(["--dias", "1", "--prob", "0.7", "--avisar"]), 0)
-        r.assert_called_once_with(1.0, 0.7, True, fontes=("ztf", "rubin"), a_partir=0.0)
+        r = self._main(["--dias", "1", "--prob", "0.7", "--avisar"])
+        r.assert_called_once_with(1.0, 0.7, True, fontes=("ztf", "rubin"), a_partir=0.0, rapido=False)
+
+    def test_rapido_usa_2_dias(self):
+        r = self._main(["--rapido", "--avisar"])
+        r.assert_called_once_with(2, 0.5, True, fontes=("ztf", "rubin"), a_partir=0.0, rapido=True)
+
+    def test_outra_rodada_em_andamento_pula(self):
+        self._main(["--avisar"], livre=False).assert_not_called()
+
+    def test_juntar_mantem_os_antigos(self):
+        antigos = [{"oid": "a", "nota": 1}, {"oid": "b", "nota": 2}]
+        self.assertEqual(cli.juntar(antigos, [{"oid": "b", "nota": 9}]), [{"oid": "b", "nota": 9}, {"oid": "a", "nota": 1}])
+
+    def test_trava_de_verdade(self):
+        with tempfile.TemporaryDirectory() as d, cli.trava(d) as a, cli.trava(d) as b:
+            self.assertEqual((a, b), (True, False))
 
 
 class TesteSegundaPassada(unittest.TestCase):

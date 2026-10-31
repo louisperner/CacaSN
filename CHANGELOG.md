@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.13.0] - 2026-10-31
+
+### Adicionado
+- `--rapido`: rodada curta para agendar a cada 30 min (alertas dos últimos 2 dias, sem acompanhamento,
+  novidades do TNS nem novas anãs), que junta o resultado ao `resultados.json` da rodada completa. Um
+  candidato do Rubin avisado às 23:50 de 29/10 virou AT de outro grupo antes da rodada seguinte de 3 h.
+- Trava (`.cacasn.lock`): se uma rodada ainda está em andamento, a seguinte é pulada.
+
 ## [0.12.0] - 2026-10-31
 
 ### Adicionado

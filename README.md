@@ -98,7 +98,8 @@ TNS IDs of the data source, camera and filters (read from objects already on TNS
 form). For a Rubin source with nothing in the template image and no earlier night in Fink's forced
 photometry, the non-detection is given as archival information ("Other"). It never sends anything: add `reporter` and `reporting_groupid` to `tns.json`, try it on
 https://sandbox.wis-tns.org, then submit on TNS. Professional bots report clear ZTF supernovae within
-hours, so speed matters: schedule `--avisar` every few hours.
+hours, so speed matters: schedule `--avisar` every few hours, plus `--avisar --rapido` every 30 minutes (last 2 days of alerts only;
+overlapping runs are skipped through a lock file).
 
 Before reporting, `cacasn --ficha <OID>` runs the checks that used to be done by hand, all through
 services outside the CDS (which takes SIMBAD and VizieR down when it is offline): TNS within 5", Gaia DR3
