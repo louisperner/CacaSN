@@ -22,7 +22,10 @@ from . import catalogos
 from .rede import abrir, get_json
 
 ALERCE = "https://api.alerce.online/ztf/v1/objects/"
-GAIA_TAP = "https://gea.esac.esa.int/tap-server/tap/sync?"
+GAIA_TAPS = (
+    ("https://gea.esac.esa.int/tap-server/tap/sync?", "gaiadr3.gaia_source"),
+    ("https://dc.zah.uni-heidelberg.de/tap/sync?", "gaia.dr3lite"),  # espelho do GAVO
+)
 SKYBOT = "https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?"
 NED = "https://ned.ipac.caltech.edu/cgi-bin/objsearch?"
 RAIO_GAIA = 3.0  # arcsec
@@ -34,6 +37,14 @@ PARALAXE_SIGMA = 5.0
 DETECCOES_MIN = 2
 NUCLEAR = 1.0  # arcsec do centro da galáxia: suspeita de AGN/TDE
 C_KM_S, H0 = 299792.458, 70.0
+FINK = "https://api.lsst.fink-portal.org/api/v1"
+FID_LSST = {"u": 0, "g": 1, "r": 2, "i": 3, "z": 4, "y": 5}
+
+
+def _rapido(url: str) -> bytes:
+    """Gaia/NED/SkyBoT às vezes ficam lentos: 30 s e 2 tentativas, não 60 s e 4 (a ficha
+    ficava 10 min parada). Se não responder, a ficha bloqueia o envio e pede para refazer."""
+    return abrir(url, 30, 2)
 
 
 def nao_deteccao(oid: str, mjd0: float, consultar: Callable[[str], Any] = get_json) -> dict[str, Any] | None:
@@ -48,19 +59,58 @@ def nao_deteccao(oid: str, mjd0: float, consultar: Callable[[str], Any] = get_js
     return {"mjd": float(n["mjd"]), "fid": int(n["fid"]), "limite": round(float(n["diffmaglim"]), 2)}
 
 
-def gaia(ra: float, dec: float, ler: Callable[[str], bytes] = abrir) -> list[dict[str, Any]]:
-    """Fontes do Gaia DR3 a menos de RAIO_GAIA", pela TAP da ESA."""
-    q = (
-        "SELECT source_id, phot_g_mean_mag, parallax, parallax_over_error, "
-        f"DISTANCE(POINT({ra},{dec}),POINT(ra,dec))*3600 AS sep FROM gaiadr3.gaia_source "
-        f"WHERE 1=CONTAINS(POINT(ra,dec),CIRCLE({ra},{dec},{RAIO_GAIA / 3600})) ORDER BY sep"
+def nao_deteccao_rubin(oid: str, mjd0: float, consultar: Callable[[str], Any] = get_json) -> dict[str, Any] | None:
+    """Última não-detecção do Rubin pela fotometria forçada do Fink: medida de uma noite
+    anterior com S/R < 3; o limite é 5 x o erro do fluxo (nJy) em magnitude AB."""
+    q = urllib.parse.urlencode(
+        {"diaObjectId": oid.replace("LSST ", ""), "columns": "r:midpointMjdTai,r:psfFlux,r:psfFluxErr,r:band"}
     )
-    url = GAIA_TAP + urllib.parse.urlencode({"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "json", "QUERY": q})
-    linhas = json.loads(ler(url))["data"]
-    return [{"source_id": l[0], "g": l[1], "paralaxe": l[2], "paralaxe_sigma": l[3], "sep": round(l[4], 2)} for l in linhas]
+    pontos = consultar(f"{FINK}/fp?{q}") or []
+    antes = [
+        p
+        for p in pontos
+        if (p.get("r:psfFluxErr") or 0) > 0
+        and p["r:midpointMjdTai"] < mjd0 - 0.3  # outra noite
+        and abs(p.get("r:psfFlux") or 0) / p["r:psfFluxErr"] < 3
+    ]
+    if not antes:
+        return None
+    ultima = max(p["r:midpointMjdTai"] for p in antes)
+    p = min((p for p in antes if ultima - p["r:midpointMjdTai"] < 0.5), key=lambda p: p["r:psfFluxErr"])
+    limite = 31.4 - 2.5 * math.log10(5 * p["r:psfFluxErr"])
+    return {"mjd": float(p["r:midpointMjdTai"]), "fid": FID_LSST.get(str(p.get("r:band")), 9), "limite": round(limite, 2)}
 
 
-def skybot(ra: float, dec: float, mjd: float, ler: Callable[[str], bytes] = abrir) -> list[str]:
+def gaia(ra: float, dec: float, ler: Callable[[str], bytes] = _rapido) -> list[dict[str, Any]]:
+    """Fontes do Gaia DR3 a menos de RAIO_GAIA": TAP da ESA e, se ela não responder, o
+    espelho do GAVO (Heidelberg) com o mesmo catálogo."""
+    erro: Exception | None = None
+    for tap, tabela in GAIA_TAPS:
+        q = (
+            "SELECT source_id, phot_g_mean_mag, parallax, parallax_error, "
+            f"DISTANCE(POINT({ra},{dec}),POINT(ra,dec))*3600 AS sep FROM {tabela} "
+            f"WHERE 1=CONTAINS(POINT(ra,dec),CIRCLE({ra},{dec},{RAIO_GAIA / 3600})) ORDER BY sep"
+        )
+        url = tap + urllib.parse.urlencode({"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "json", "QUERY": q})
+        try:
+            linhas = json.loads(ler(url))["data"]
+        except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
+            erro = e
+            continue
+        return [
+            {
+                "source_id": l[0],
+                "g": l[1],
+                "paralaxe": l[2],
+                "paralaxe_sigma": l[2] / l[3] if l[2] is not None and l[3] else None,
+                "sep": round(l[4], 2),
+            }
+            for l in linhas
+        ]
+    raise erro or OSError("nenhum servidor do Gaia respondeu")
+
+
+def skybot(ra: float, dec: float, mjd: float, ler: Callable[[str], bytes] = _rapido) -> list[str]:
     """Asteroides conhecidos perto da posição na hora (resposta vazia = nenhum)."""
     p = {
         "-ep": f"{mjd + 2400000.5:.5f}",
@@ -75,7 +125,7 @@ def skybot(ra: float, dec: float, mjd: float, ler: Callable[[str], bytes] = abri
     return [l.strip() for l in texto.splitlines() if l.strip() and not l.startswith("#")]
 
 
-def ned_hospedeira(ra: float, dec: float, ler: Callable[[str], bytes] = abrir) -> dict[str, Any] | None:
+def ned_hospedeira(ra: float, dec: float, ler: Callable[[str], bytes] = _rapido) -> dict[str, Any] | None:
     """Galáxia mais próxima com redshift no NED a menos de RAIO_NED"."""
     p = {
         "search_type": "Near Position Search",
@@ -114,6 +164,12 @@ def magnitude_absoluta(mag: float, z: float) -> float:
     return round(mag - 5 * math.log10(d_mpc * 1e5), 1)
 
 
+def fonte_nova_rubin(it: dict[str, Any]) -> bool:
+    """Rubin sem nada na imagem de referência (rubin.pontuar marca 'fonte nova'): vale como
+    informação de arquivo no lugar da não-detecção, quando o Fink não tem noite anterior."""
+    return it.get("fonte") == "rubin" and "fonte nova" in (it.get("motivos") or [])
+
+
 def _tentar(f: Callable[[], Any]) -> tuple[Any, str | None]:
     try:
         return f(), None
@@ -131,6 +187,7 @@ def montar(
         "skybot": skybot,
         "ned": ned_hospedeira,
         "nao_deteccao": nao_deteccao,
+        "nao_deteccao_rubin": nao_deteccao_rubin,
     }
     s.update(servicos or {})
     ra, dec, mjd0 = it["ra"], it["dec"], it["mjd0"]
@@ -140,7 +197,14 @@ def montar(
         ("gaia", lambda: s["gaia"](ra, dec)),
         ("skybot", lambda: s["skybot"](ra, dec, mjd0)),
         ("ned", lambda: s["ned"](ra, dec)),
-        ("nao_deteccao", lambda: s["nao_deteccao"](it["oid"], mjd0) if it.get("fonte", "ztf") == "ztf" else None),
+        (
+            "nao_deteccao",
+            lambda: (
+                s["nao_deteccao"](it["oid"], mjd0)
+                if it.get("fonte", "ztf") == "ztf"
+                else s["nao_deteccao_rubin"](it["oid"], mjd0)
+            ),
+        ),
     ):
         ficha[nome], erro = _tentar(chamada)
         if erro:
@@ -157,7 +221,7 @@ def montar(
         motivos.append(f'estrela do Gaia a {estrelas[0]["sep"]}" (paralaxe {estrelas[0]["paralaxe_sigma"]:.0f} sigma)')
     if ficha["skybot"]:
         motivos.append(f"asteroide conhecido na posição: {ficha['skybot'][0][:60]}")
-    if it.get("fonte", "ztf") == "ztf" and not ficha["nao_deteccao"]:
+    if not ficha["nao_deteccao"] and not fonte_nova_rubin(it):
         motivos.append("sem última não-detecção (o TNS exige)")
     if len(it.get("curva") or []) < DETECCOES_MIN:
         motivos.append(
@@ -177,16 +241,18 @@ def montar(
 
 def texto(ficha: dict[str, Any]) -> str:
     """Resumo de poucas linhas para mostrar antes de pedir aprovação."""
+    falhas = ficha.get("falhas", {})
     linhas = [f"{ficha['oid']}  RA {ficha['ra']:.5f}  Dec {ficha['dec']:.5f}  mag {ficha.get('mag')}"]
     h = ficha.get("ned")
     if h:
         linhas.append(f'galáxia: {h["nome"]} z={h["z"]} a {h["sep"]}" -> M = {ficha.get("M")}')
     else:
-        linhas.append('galáxia: nenhuma com redshift no NED a 15"')
+        linhas.append("NED: não respondeu" if "ned" in falhas else 'galáxia: nenhuma com redshift no NED a 15"')
     g = ficha.get("gaia")
     perto = f'{len(g)} fonte(s), a mais perto a {g[0]["sep"]}" G={g[0]["g"]}' if g else ""
-    linhas.append("Gaia: " + (perto or 'nenhuma fonte a 3"'))
-    linhas.append("SkyBoT: " + ("nenhum asteroide conhecido" if not ficha.get("skybot") else ficha["skybot"][0][:70]))
+    linhas.append("Gaia: " + ("não respondeu" if "gaia" in falhas else perto or 'nenhuma fonte a 3"'))
+    sky = ficha["skybot"][0][:70] if ficha.get("skybot") else "nenhum asteroide conhecido"
+    linhas.append("SkyBoT: " + ("não respondeu" if "skybot" in falhas else sky))
     n = ficha.get("nao_deteccao")
     linhas.append("última não-detecção: " + (f"MJD {n['mjd']:.3f} lim {n['limite']}" if n else "nenhuma"))
     linhas += [f"atenção: {a}" for a in ficha.get("avisos", [])]
