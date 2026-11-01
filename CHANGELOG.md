@@ -2,6 +2,15 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.14.0] - 2026-11-01
+
+### Adicionado
+- `--servidor`: servidor local (porta 8799, token em `servidor.json` com permissão 600, Bonjour
+  `_cacasn._tcp`) para o app do iPhone. Rotas: `/candidatos` (fora do TNS, acima do limite, com a ficha
+  já feita), `/descobertas`, `/eventos` (as notificações do Mac), `/ficha`, `/enviar` e `/ignorar`.
+  O envio exige o OID repetido, refaz a ficha na hora e só sai se ela continuar limpa; um envio por vez.
+  A chave do TNS nunca sai do Mac.
+
 ## [0.13.0] - 2026-10-31
 
 ### Adicionado

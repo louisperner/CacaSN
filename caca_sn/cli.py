@@ -391,7 +391,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="rodada curta para agendar a cada 30 min: alertas dos últimos 2 dias, sem acompanhamento/novidades/novas anãs",
     )
+    ap.add_argument(
+        "--servidor",
+        action="store_true",
+        help="servidor local para o app do iPhone (porta 8799, token em servidor.json, Bonjour _cacasn._tcp)",
+    )
     args = ap.parse_args(argv)
+    if args.servidor:
+        from . import servidor
+
+        registro.configurar(os.path.join(PASTA, "cacasn.log"))
+        servidor.servir(PASTA, preparar)
+        return 0
     if args.rascunho:
         return gerar_rascunho(args.rascunho)
     if args.ficha:
