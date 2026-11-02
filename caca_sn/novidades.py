@@ -170,5 +170,6 @@ def verificar(
     estado["avisados"] = sorted(avisados)[-500:]
     gravar_json(caminho, estado)
     if novos:
-        alertas.notificar("CacaSN: novidades no TNS", "; ".join(novos)[:250], os.path.join(pasta, RESUMO))
+        texto = "; ".join(novos)[:250]
+        alertas.notificar("CacaSN: novidades no TNS", texto, os.path.join(pasta, RESUMO), alertas.link_tns(texto))
     return novos

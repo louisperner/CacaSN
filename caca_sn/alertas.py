@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from typing import Any
@@ -25,15 +26,30 @@ def corte(item: dict[str, Any]) -> float:
     return AVISO
 
 
-def notificar(titulo: str, texto: str, relatorio: str) -> None:
-    """Notificação do macOS; em outros sistemas vai para o log."""
+AVISOS_APP = os.path.expanduser("~/Applications/CacaSN Avisos.app/Contents/MacOS/CacaSNAvisos")
+
+
+def link_tns(texto: str) -> str | None:
+    """Página do primeiro objeto TNS citado no texto (ex.: 'SN 2026aexm')."""
+    m = re.search(r"\b(?:SN|AT)\s?(\d{4}[a-z]{1,4})\b", texto)
+    return f"https://www.wis-tns.org/object/{m.group(1)}" if m else None
+
+
+def notificar(titulo: str, texto: str, relatorio: str, link: str | None = None) -> None:
+    """Notificação do macOS; em outros sistemas vai para o log. Com o app CacaSN Avisos
+    instalado (avisos/instalar.sh), o clique abre `link` (ou o relatório)."""
     obter().warning("alerta", titulo=titulo, texto=texto)
-    if sys.platform == "darwin":
-        subprocess.run(
-            ["osascript", "-e", f'display notification {json.dumps(texto)} with title {json.dumps(titulo)} sound name "Glass"'],
-            check=False,
-        )
-        subprocess.run(["open", relatorio], check=False)
+    if sys.platform != "darwin":
+        return
+    if os.path.exists(AVISOS_APP):
+        subprocess.Popen([AVISOS_APP, titulo, texto, link or os.path.abspath(relatorio)])
+        return
+    # sem o app: aviso simples (não clicável) e abre o relatório
+    subprocess.run(
+        ["osascript", "-e", f'display notification {json.dumps(texto)} with title {json.dumps(titulo)} sound name "Glass"'],
+        check=False,
+    )
+    subprocess.run(["open", relatorio], check=False)
 
 
 ENVIAR = "Enviar ao TNS"
