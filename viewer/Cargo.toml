@@ -1,0 +1,9 @@
+[package]
+name = "viewer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.29"
+open = "5.4.5"
+regex = "1.13.1"
