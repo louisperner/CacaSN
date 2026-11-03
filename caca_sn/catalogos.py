@@ -37,23 +37,35 @@ class Disjuntor:
 VIZIER = Disjuntor()
 
 
+# O CDS (Estrasburgo) e seus espelhos; quando o CDS cai (como em 01-03/11/2026) os espelhos seguem no ar.
+# Só leitura de catálogos públicos: os que não têm HTTPS válido vão por HTTP.
+SERVIDORES = (
+    "https://vizier.cds.unistra.fr",
+    "https://vizier.idia.ac.za",
+    "http://vizier.china-vo.org",
+    "http://vizier.nao.ac.jp",
+)
+_preferido = 0  # o último que respondeu é tentado primeiro
+
+
 def vizier(fonte: str, ra: float, dec: float, raio: float, cols: str) -> list[list[str]] | None:
-    """Linhas do catálogo perto da posição, ou None se o VizieR não respondeu."""
+    """Linhas do catálogo perto da posição, ou None se nenhum servidor do VizieR respondeu."""
+    global _preferido
     if VIZIER.aberto:
         return None
-    url = (
-        f"https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source={fonte}&-c={ra:.6f}%20{dec:+.6f}"
-        f"&-c.rs={raio}&-out={cols}&-out.max=5&-sort=_r"
-    )
-    for i in range(3):
+    consulta = f"/viz-bin/asu-tsv?-source={fonte}&-c={ra:.6f}%20{dec:+.6f}&-c.rs={raio}&-out={cols}&-out.max=5&-sort=_r"
+    ordem = [_preferido] + [i for i in range(len(SERVIDORES)) if i != _preferido]
+    for n, i in enumerate(ordem):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=HDR), timeout=30) as r:
+            req = urllib.request.Request(SERVIDORES[i] + consulta, headers=HDR)
+            with urllib.request.urlopen(req, timeout=20) as r:
                 linhas = [l.split("\t") for l in r.read().decode().splitlines() if l and not l.startswith("#")]
             VIZIER.resultado(True)
+            _preferido = i
             return [l for l in linhas[3:] if len(l) == len(cols.split(","))]
         except Exception:
-            if i < 2:
-                time.sleep(2**i)
+            if n < len(ordem) - 1:
+                time.sleep(1)
     VIZIER.resultado(False)
     return None
 

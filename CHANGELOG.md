@@ -2,6 +2,15 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.15.0] - 2026-11-03
+
+### Corrigido
+- VizieR (Gaia e VSX): se o CDS (Estrasburgo) não responde, as consultas usam os espelhos (IDIA na
+  África do Sul, China-VO e NAOJ no Japão), começando pelo último que respondeu. Com o CDS fora de
+  01 a 03/11/2026, o caçador de novas anãs não rodou.
+- Novas anãs: se o X-Match do CDS falha, o VSX é conferido objeto por objeto nos espelhos (617
+  candidatos em ~5 min). Se algum ficar sem resposta, a rodada continua sem avisar, como antes.
+
 ## [0.14.0] - 2026-11-01
 
 ### Adicionado

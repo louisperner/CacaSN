@@ -82,12 +82,13 @@ class TesteMedidas(unittest.TestCase):
 
 
 class TesteRodada(unittest.TestCase):
-    def rodar(self, d, enviar=xmatch_ok, gaia=None):
+    def rodar(self, d, enviar=xmatch_ok, gaia=None, plano_b=None):
         curvas = {"ZTF26ana": ANA, "ZTF26verm": VERMELHA, "ZTF26vsx": ANA, "ZTF26tns": ANA}
         with (
             mock.patch.object(novas_anas, "get_json", falso_get_json(curvas)),
             mock.patch.object(novas_anas, "postar", enviar),
             mock.patch.object(novas_anas, "gaia_brilhante", return_value=gaia),
+            mock.patch.object(novas_anas, "vsx_um_por_um", plano_b or mock.Mock(side_effect=OSError("espelhos fora"))),
             mock.patch.object(novas_anas.alertas, "notificar") as n,
         ):
             return novas_anas.rodar(d, avisar=True, cfg={}, indice=Indice()), n
@@ -114,6 +115,14 @@ class TesteRodada(unittest.TestCase):
             n.assert_not_called()
             self.assertFalse(os.path.exists(os.path.join(d, novas_anas.SAIDA_JSON)))
 
+    def test_xmatch_fora_usa_espelhos(self):
+        def quebra(url, corpo, tipo):
+            raise OSError("CDS fora")
+
+        with tempfile.TemporaryDirectory() as d:
+            aprovadas, n = self.rodar(d, enviar=quebra, plano_b=lambda objs: {"ZTF26vsx": "V1 (UGSS)"})
+            self.assertEqual([a["oid"] for a in aprovadas], ["ZTF26ana"])
+
     def test_gaia_brilhante_marca_suspeito(self):
         with tempfile.TemporaryDirectory() as d:
             aprovadas, _ = self.rodar(d, gaia="Gaia DR3 1 G=12.00")
@@ -131,6 +140,19 @@ class TesteRodada(unittest.TestCase):
         r = rel["at_report"]["0"]
         self.assertTrue(r["remarks"].startswith("likely dwarf nova outburst"))
         self.assertTrue(any("at_type" in p for p in pend))
+
+
+class TesteVsxPlanoB(unittest.TestCase):
+    OBJS = [{"oid": "a", "meanra": 1.0, "meandec": 2.0}, {"oid": "b", "meanra": 3.0, "meandec": 4.0}]
+
+    def test_acha_e_ignora_vazios(self):
+        resp = {1.0: [["V0001 And", "UGSS"]], 3.0: []}
+        r = novas_anas.vsx_um_por_um(self.OBJS, lambda f, ra, dec, raio, cols: resp[ra])
+        self.assertEqual(r, {"a": "V0001 And (UGSS)"})
+
+    def test_sem_resposta_sobe(self):
+        with self.assertRaises(OSError):
+            novas_anas.vsx_um_por_um(self.OBJS, lambda *a: None)
 
 
 if __name__ == "__main__":
