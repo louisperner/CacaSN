@@ -143,6 +143,21 @@ def vsx_em_lote(objs: list[dict[str, Any]], enviar: Any = None) -> dict[str, str
     return achados
 
 
+def vsx_um_por_um(objs: list[dict[str, Any]], consultar: Any = None) -> dict[str, str]:
+    """Plano B quando o X-Match do CDS cai: cone de 5" no VSX objeto por objeto, pelos espelhos do
+    VizieR. Se algum ficar sem resposta, a exceção sobe (sem o VSX não dá para dizer que é inédito)."""
+    consultar = consultar or catalogos.vizier
+
+    def um(o: dict[str, Any]) -> tuple[str, str | None]:
+        linhas = consultar("B/vsx/vsx", o["meanra"], o["meandec"], RAIO_VSX, "Name,Type")
+        if linhas is None:
+            raise OSError(f"VSX não respondeu para {o['oid']}")
+        return o["oid"], (f"{linhas[0][0].strip()} ({linhas[0][1].strip()})" if linhas else None)
+
+    with ThreadPoolExecutor(4) as ex:
+        return {oid: v for oid, v in ex.map(um, objs) if v}
+
+
 def _percentil(valores: list[float], p: float) -> float:
     v = sorted(valores)
     return v[round(p * (len(v) - 1))]
@@ -287,8 +302,12 @@ def rodar(pasta: str, avisar: bool = False, cfg: Any = None, indice: Any = None,
     try:
         vsx = vsx_em_lote(fora_tns)
     except Exception as e:
-        log.error("novas_anas_xmatch_falhou", erro=repr(e))
-        return []
+        log.warning("novas_anas_xmatch_falhou", erro=repr(e), plano_b="VSX um por um nos espelhos do VizieR")
+        try:
+            vsx = vsx_um_por_um(fora_tns)
+        except Exception as e2:
+            log.error("novas_anas_vsx_falhou", erro=repr(e2))
+            return []
     restantes = [o for o in fora_tns if o["oid"] not in vsx]
     with ThreadPoolExecutor(4) as ex:
         medidos = [m for m in ex.map(_seguro, restantes) if m]

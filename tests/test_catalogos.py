@@ -37,8 +37,25 @@ class TesteDisjuntor(unittest.TestCase):
         ):
             for _ in range(5):
                 self.assertIsNone(catalogos.vizier("X", 1, 2, 1, "a"))
-        self.assertEqual(abre.call_count, 3 * catalogos.VIZIER.limite)  # depois de aberto, nem tenta
+        self.assertEqual(abre.call_count, len(catalogos.SERVIDORES) * catalogos.VIZIER.limite)  # depois de aberto, nem tenta
         self.assertTrue(catalogos.VIZIER.aberto)
+
+    def test_cai_no_espelho_e_lembra_dele(self):
+        resposta = mock.MagicMock()
+        resposta.__enter__.return_value.read.return_value = b"#c\na\n-\n---\nV1\n"
+        chamadas = []
+
+        def abrir(req, timeout):
+            chamadas.append(req.full_url.split("/viz-bin")[0])
+            if "unistra" in req.full_url:
+                raise OSError("CDS fora")
+            return resposta
+
+        with mock.patch("urllib.request.urlopen", side_effect=abrir), mock.patch.object(catalogos.time, "sleep"):
+            self.assertEqual(catalogos.vizier("B/vsx/vsx", 1, 2, 5, "a"), [["V1"]])
+            self.assertEqual(catalogos.vizier("B/vsx/vsx", 1, 2, 5, "a"), [["V1"]])
+        self.assertEqual(chamadas, [catalogos.SERVIDORES[0], catalogos.SERVIDORES[1], catalogos.SERVIDORES[1]])
+        catalogos._preferido = 0
 
     def test_resposta_boa_zera(self):
         catalogos.VIZIER.resultado(False)
