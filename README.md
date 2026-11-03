@@ -117,6 +117,13 @@ in `tns.json`, a scheduled `--avisar` run also opens a macOS dialog for each new
 check sheet is clean ("Depois" / "Enviar ao TNS"); nothing is sent without the click, and the dialog
 closes by itself after 30 minutes.
 
+## iPhone app (local network)
+
+`cacasn --servidor` serves candidates, check sheets, followed discoveries and notifications to the
+companion iPhone app (`CacaSNApp`) on the home network: port 8799, a bearer token kept in `servidor.json`
+(created on first run, mode 600) and Bonjour `_cacasn._tcp`. Sending to TNS from the phone needs Face ID,
+repeats the OID, and the Mac re-runs the check sheet before sending; the TNS key never leaves the Mac.
+
 ## Following your discoveries
 
 `cacasn --acompanhar 2026agsv` adds a TNS object to `acompanhar.json`. Every run then reads each
