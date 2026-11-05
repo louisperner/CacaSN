@@ -18,7 +18,7 @@ import urllib.error
 import urllib.parse
 from typing import Any, Callable
 
-from . import catalogos
+from . import catalogos, historico
 from .rede import abrir, get_json
 
 ALERCE = "https://api.alerce.online/ztf/v1/objects/"
@@ -178,9 +178,13 @@ def _tentar(f: Callable[[], Any]) -> tuple[Any, str | None]:
 
 
 def montar(
-    it: dict[str, Any], cfg: dict[str, Any] | None, servicos: dict[str, Callable[..., Any]] | None = None
+    it: dict[str, Any],
+    cfg: dict[str, Any] | None,
+    servicos: dict[str, Callable[..., Any]] | None = None,
+    pasta: str | None = None,
 ) -> dict[str, Any]:
-    """Todas as checagens de um candidato e o veredito."""
+    """Todas as checagens de um candidato e o veredito. Com `pasta` (onde fica o fotometria.json),
+    também o histórico longo do ATLAS, que só gera aviso."""
     s: dict[str, Callable[..., Any]] = {
         "tns": catalogos.tns_busca,
         "gaia": gaia,
@@ -188,6 +192,7 @@ def montar(
         "ned": ned_hospedeira,
         "nao_deteccao": nao_deteccao,
         "nao_deteccao_rubin": nao_deteccao_rubin,
+        "historico": historico.historico,
     }
     s.update(servicos or {})
     ra, dec, mjd0 = it["ra"], it["dec"], it["mjd0"]
@@ -209,6 +214,10 @@ def montar(
         ficha[nome], erro = _tentar(chamada)
         if erro:
             ficha["falhas"][nome] = erro
+    if pasta:
+        ficha["historico"], erro = _tentar(lambda: s["historico"](it, pasta))
+        if erro:
+            ficha["falhas"]["historico"] = erro
     if ficha["ned"] and ficha["mag"] is not None:
         ficha["M"] = magnitude_absoluta(float(ficha["mag"]), ficha["ned"]["z"])
     motivos = []
@@ -234,6 +243,9 @@ def montar(
     h = ficha["ned"]
     if h and h["sep"] == h["sep"] and h["sep"] < NUCLEAR:  # sep == sep: não é nan
         avisos.append(f'no núcleo da galáxia ({h["sep"]}"): pode ser núcleo ativo (AGN) ou evento de maré, não só supernova')
+    hist = ficha.get("historico")
+    if hist and not hist.get("pendente") and hist.get("ativa_antes"):
+        avisos.append(f"histórico ATLAS: {hist['veredito']} (AGN ou estrela variável?)")
     ficha["motivos"], ficha["avisos"] = motivos, avisos
     ficha["pronto"] = not motivos
     return ficha
@@ -255,6 +267,10 @@ def texto(ficha: dict[str, Any]) -> str:
     linhas.append("SkyBoT: " + ("não respondeu" if "skybot" in falhas else sky))
     n = ficha.get("nao_deteccao")
     linhas.append("última não-detecção: " + (f"MJD {n['mjd']:.3f} lim {n['limite']}" if n else "nenhuma"))
+    if "historico" in falhas:
+        linhas.append("histórico ATLAS: não respondeu")
+    elif ficha.get("historico"):
+        linhas.append(f"histórico ATLAS: {ficha['historico']['veredito']}")
     linhas += [f"atenção: {a}" for a in ficha.get("avisos", [])]
     linhas.append("PRONTO PARA REPORTAR" if ficha["pronto"] else "NÃO REPORTAR: " + "; ".join(ficha["motivos"]))
     return "\n".join(linhas)

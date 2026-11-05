@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.16.0] - 2026-11-05
+
+### Adicionado
+- Histórico longo na ficha: a fotometria forçada do ATLAS (desde 2015) no ponto do candidato. Com 3
+  noites ou mais de S/R >= 5 antes da descoberta (fora dos 15 dias anteriores), a ficha avisa "já
+  variava antes (AGN ou estrela variável?)"; nunca bloqueia o envio. Precisa de `fotometria.json`
+  (`atlas_token`, permissão 600, fora do git).
+- Sem esperar a fila do ATLAS (em 05/11/2026 um pedido levou ~40 min): a 1ª ficha enfileira, as
+  seguintes conferem; o resultado fica em `atlas_estado.json` e a tarefa é apagada no servidor.
+
 ## [0.15.0] - 2026-11-03
 
 ### Corrigido

@@ -24,3 +24,5 @@ saida-teste/
 .cacasn.lock
 servidor.json
 ignorados.json
+fotometria.json
+atlas_estado.json

@@ -269,7 +269,7 @@ def preparar(oid: str, pasta: str = PASTA) -> tuple[dict[str, Any], dict[str, An
         print(f"{oid} não está no último resultados.json")
         return None
     cfg = catalogos.tns_carregar(pasta)
-    f = ficha.montar(it, cfg)
+    f = ficha.montar(it, cfg, pasta=pasta)
     os.makedirs(os.path.join(pasta, "rascunhos"), exist_ok=True)
     gravar_json(os.path.join(pasta, "rascunhos", f"{it['oid'].replace(' ', '_')}.ficha.json"), f, indent=2, ensure_ascii=False)
     relatorio, pendencias = rascunho(it, cfg, f)
