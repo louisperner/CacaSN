@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable
 
-from .rede import HDR, ler_json
+from .rede import HDR, gravar_json, ler_json
 
 ARQUIVO = "fotometria.json"
 ATLAS = "https://fallingstar-data.com/forcedphot"
@@ -23,7 +23,8 @@ MJD_INICIO = 57200.0  # meados de 2015, começo da fotometria útil do ATLAS
 ANTES = 15.0  # dias antes da 1ª detecção: o que vem depois já pode ser a própria explosão
 SIGMA = 5.0  # S/R mínima de uma detecção
 NOITES_ATIVAS = 3  # noites distintas com detecção antes = a fonte já variava
-ESPERA_MAX = 900  # s; a fila do ATLAS às vezes demora
+ESPERA_MAX = 900  # s; só para atlas() (uso avulso); a ficha usa historico(), que não espera
+ESTADO = "atlas_estado.json"
 
 
 def credenciais(pasta: str) -> dict[str, Any]:
@@ -112,9 +113,49 @@ def atlas(
             pass
 
 
-def historico(it: dict[str, Any], pasta: str, consultar: Callable[..., list[dict[str, Any]]] = atlas) -> dict[str, Any] | None:
-    """Resumo do histórico longo do candidato, ou None sem token do ATLAS."""
+def _estado(pasta: str) -> tuple[str, dict[str, Any]]:
+    caminho = os.path.join(pasta, ESTADO)
+    return caminho, ler_json(caminho, {}) or {}
+
+
+def historico(it: dict[str, Any], pasta: str, pedir: Callable[..., tuple[int, Any]] = _pedir) -> dict[str, Any] | None:
+    """Histórico longo SEM esperar a fila do ATLAS (que leva de minutos a ~1 h):
+    1ª chamada enfileira e devolve {"pendente": True}; as seguintes só conferem a tarefa;
+    quando fica pronta, baixa, resume, guarda em `atlas_estado.json` e apaga a tarefa no servidor.
+    None sem token do ATLAS."""
     token = credenciais(pasta).get("atlas_token")
     if not token:
         return None
-    return resumir(consultar(it["ra"], it["dec"], token), it["mjd0"])
+    caminho, estado = _estado(pasta)
+    oid = str(it["oid"])
+    e = estado.get(oid) or {}
+    if e.get("resumo"):
+        return dict(e["resumo"])
+    if not e.get("tarefa"):
+        dados = {"ra": it["ra"], "dec": it["dec"], "mjd_min": MJD_INICIO, "send_email": False}
+        _, b = pedir(f"{ATLAS}/queue/", token, dados)
+        estado[oid] = {"tarefa": json.loads(b)["url"], "pedido": time.time()}
+        gravar_json(caminho, estado, indent=1)
+        return {"pendente": True, "veredito": "pedido na fila do ATLAS; rode a ficha de novo mais tarde"}
+    _, b = pedir(e["tarefa"], token)
+    d = json.loads(b)
+    if not d.get("finishtimestamp"):
+        fase = "rodando no ATLAS" if d.get("starttimestamp") else "esperando na fila do ATLAS"
+        return {"pendente": True, "veredito": f"pedido {fase}; rode a ficha de novo mais tarde"}
+    try:
+        if d.get("error_msg"):
+            raise RuntimeError(f"ATLAS: {d['error_msg']}")
+        _, txt = pedir(d["result_url"], token)
+        resumo = resumir(ler_atlas(txt.decode() if isinstance(txt, bytes) else str(txt)), it["mjd0"])
+    except Exception:
+        estado.pop(oid, None)  # na próxima ficha, pede de novo
+        gravar_json(caminho, estado, indent=1)
+        raise
+    finally:
+        try:  # o servidor pede para apagar as tarefas já baixadas
+            pedir(e["tarefa"], token, metodo="DELETE")
+        except Exception:
+            pass
+    estado[oid] = {"resumo": resumo}
+    gravar_json(caminho, estado, indent=1)
+    return resumo

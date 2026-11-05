@@ -244,7 +244,7 @@ def montar(
     if h and h["sep"] == h["sep"] and h["sep"] < NUCLEAR:  # sep == sep: não é nan
         avisos.append(f'no núcleo da galáxia ({h["sep"]}"): pode ser núcleo ativo (AGN) ou evento de maré, não só supernova')
     hist = ficha.get("historico")
-    if hist and hist.get("ativa_antes"):
+    if hist and not hist.get("pendente") and hist.get("ativa_antes"):
         avisos.append(f"histórico ATLAS: {hist['veredito']} (AGN ou estrela variável?)")
     ficha["motivos"], ficha["avisos"] = motivos, avisos
     ficha["pronto"] = not motivos

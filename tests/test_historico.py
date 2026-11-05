@@ -67,14 +67,51 @@ class TesteFila(unittest.TestCase):
 
     def test_sem_token_devolve_none(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertIsNone(historico.historico({"ra": 1, "dec": 2, "mjd0": 3}, d))
+            self.assertIsNone(historico.historico({"oid": "x", "ra": 1, "dec": 2, "mjd0": 3}, d))
 
-    def test_com_token_usa_o_arquivo(self):
-        with tempfile.TemporaryDirectory() as d:
-            with open(os.path.join(d, historico.ARQUIVO), "w") as f:
-                json.dump({"atlas_token": "tok"}, f)
-            r = historico.historico({"ra": 1, "dec": 2, "mjd0": 61331}, d, lambda ra, dec, tok: [])
-            self.assertEqual(r["medidas_antes"], 0)
+
+class TesteSemEspera(unittest.TestCase):
+    IT = {"oid": "ZTF26x", "ra": 1.0, "dec": 2.0, "mjd0": 61331.0}
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        with open(os.path.join(self.d, historico.ARQUIVO), "w") as f:
+            json.dump({"atlas_token": "tok"}, f)
+        self.estado = {"finishtimestamp": None, "starttimestamp": None}
+        self.chamadas = []
+
+    def pedir(self, url, token, dados=None, metodo=None):
+        self.chamadas.append((url, metodo))
+        if url.endswith("/queue/"):
+            return 201, json.dumps({"url": "T"}).encode()
+        if url == "T" and metodo is None:
+            return 200, json.dumps(self.estado).encode()
+        if url == "R":
+            return 200, arquivo([(58000.0 + i, 3.0) for i in range(10)]).encode()
+        return 204, b""
+
+    def test_enfileira_confere_baixa_e_guarda(self):
+        r1 = historico.historico(self.IT, self.d, self.pedir)
+        self.assertTrue(r1["pendente"])
+        self.estado["starttimestamp"] = "s"
+        r2 = historico.historico(self.IT, self.d, self.pedir)
+        self.assertIn("rodando no ATLAS", r2["veredito"])
+        self.estado.update(finishtimestamp="f", error_msg=None, result_url="R")
+        r3 = historico.historico(self.IT, self.d, self.pedir)
+        self.assertEqual(r3["medidas_antes"], 10)
+        self.assertIn(("T", "DELETE"), self.chamadas)
+        n = len(self.chamadas)
+        self.assertEqual(historico.historico(self.IT, self.d, self.pedir), r3)  # do cache
+        self.assertEqual(len(self.chamadas), n)
+        self.assertEqual(sum(1 for u, m in self.chamadas if u.endswith("/queue/")), 1)  # um pedido só
+
+    def test_erro_do_atlas_limpa_e_pede_de_novo(self):
+        historico.historico(self.IT, self.d, self.pedir)
+        self.estado.update(finishtimestamp="f", error_msg="sem imagens")
+        with self.assertRaises(RuntimeError):
+            historico.historico(self.IT, self.d, self.pedir)
+        self.assertTrue(historico.historico(self.IT, self.d, self.pedir)["pendente"])
+        self.assertEqual(sum(1 for u, m in self.chamadas if u.endswith("/queue/")), 2)
 
 
 class TesteNaFicha(unittest.TestCase):
@@ -86,6 +123,12 @@ class TesteNaFicha(unittest.TestCase):
         "ned": lambda ra, dec: None,
         "nao_deteccao": lambda oid, mjd: {"mjd": 61329.0, "fid": 2, "limite": 20.2},
     }
+
+    def test_pendente_nao_vira_aviso(self):
+        pend = {"pendente": True, "veredito": "pedido na fila do ATLAS"}
+        f = ficha.montar(self.IT, {"x": 1}, dict(self.BASE, historico=lambda it, p: pend), pasta="/tmp")
+        self.assertEqual(f["avisos"], [])
+        self.assertIn("histórico ATLAS: pedido na fila", ficha.texto(f))
 
     def test_variava_vira_aviso_sem_bloquear(self):
         ativo = {"ativa_antes": True, "veredito": "já variava antes: 3 noite(s)"}

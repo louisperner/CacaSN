@@ -117,6 +117,15 @@ in `tns.json`, a scheduled `--avisar` run also opens a macOS dialog for each new
 check sheet is clean ("Depois" / "Enviar ao TNS"); nothing is sent without the click, and the dialog
 closes by itself after 30 minutes.
 
+## Long history (ATLAS forced photometry)
+
+With an ATLAS forced-photometry token (free account at https://fallingstar-data.com/forcedphot/) in
+`fotometria.json` (`{"atlas_token": "..."}`, mode 600, gitignored), the check sheet also asks ATLAS for
+the light curve at the exact position since 2015. Three or more nights at S/R >= 5 more than 15 days
+before discovery add a warning ("it was already varying: AGN or variable star?"); it never blocks a
+report. ATLAS works through a queue (minutes to ~1 h), so the first check sheet only queues the request,
+later ones pick up the result, which is cached in `atlas_estado.json`.
+
 ## iPhone app (local network)
 
 `cacasn --servidor` serves candidates, check sheets, followed discoveries and notifications to the
