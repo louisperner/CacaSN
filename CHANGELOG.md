@@ -2,6 +2,22 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.17.0] - 2026-11-07
+
+### Corrigido
+- Estrelas de movimento próprio alto viravam "transiente": o Gaia dá a posição de 2016 e a checagem
+  procurava só na posição de hoje. Agora o Gaia é buscado num raio de 30″ e cada estrela é projetada até
+  a data da detecção (`catalogos.gaia_propagado`). Caso real: ZTF26acctnkb, "nova anã" de mag 13,5, era a
+  Gaia DR3 3186021141200137472 (G 13,6, 9,4 pc, 1,57″/ano), a 17″ da posição de 2016 e a 0,06″ da detecção.
+- Estrela brilhante em cima do candidato: o raio cresce com o brilho (1,5″ / 2,5″ / 4″) e a estrela
+  precisa ser mais brilhante que a detecção + 1 mag (ZTF26acfcgtv: G 15,7 a 1,1″; o raio antigo era 1″).
+- Novas anãs: os dois casos agora reprovam (antes, a estrela brilhante só marcava "suspeito"); na ficha
+  das supernovas, bloqueiam o envio. VizieR fora do ar só marca falha, não bloqueia.
+
+### Adicionado
+- Tipos raros que avisam mesmo sem o CacaSN ter visto o objeto: Ia-CSM, Iax, Ia-SC e II-pec (a SN 2026sqf,
+  Ia-CSM, passou sem aviso).
+
 ## [0.16.0] - 2026-11-05
 
 ### Adicionado

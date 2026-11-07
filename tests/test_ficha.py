@@ -2,7 +2,7 @@ import json
 import unittest
 import urllib.parse
 
-from caca_sn import ficha
+from caca_sn import catalogos, ficha
 
 IT = {
     "oid": "ZTF26x",
@@ -24,12 +24,24 @@ def servicos(**troca):
         "ned": lambda ra, dec: {"nome": "WISEA J103006.48+080525.1", "z": 0.0528, "sep": 1.3},
         "nao_deteccao": lambda oid, mjd0: {"mjd": 61321.531, "fid": 2, "limite": 19.18},
         "nao_deteccao_rubin": lambda oid, mjd0: None,
+        "estrela_movel": lambda ra, dec, mjd, mag: None,
     }
     s.update(troca)
     return s
 
 
 class TesteVeredito(unittest.TestCase):
+    def test_estrela_que_andou_bloqueia(self):
+        motivo = "estrela de movimento próprio alto: Gaia DR3 3186021141200137472"
+        f = ficha.montar(IT, CFG, servicos(estrela_movel=lambda ra, dec, mjd, mag: motivo))
+        self.assertFalse(f["pronto"])
+        self.assertIn(motivo, f["motivos"])
+
+    def test_vizier_fora_nao_bloqueia(self):
+        f = ficha.montar(IT, CFG, servicos(estrela_movel=lambda ra, dec, mjd, mag: catalogos.SEM_RESPOSTA))
+        self.assertTrue(f["pronto"])
+        self.assertIn("estrela_movel", f["falhas"])
+
     def test_pronto_e_magnitude_absoluta(self):
         f = ficha.montar(IT, CFG, servicos())
         self.assertTrue(f["pronto"], f["motivos"])
