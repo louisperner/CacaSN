@@ -5,7 +5,9 @@ Método validado à mão em 25/10/2026 (achou 3 inéditas, hoje AT 2026agtu/agtv
 2. fora do TNS (índice local, 3") e fora do VSX (UM cruzamento em lote no CDS X-Match, 5");
 3. curva: quase só detecções positivas, subiu >= 2 mag, >= 4 detecções, erupção curta (<= 40 dias)
    e cor não vermelha (g-r <= 1; uma variável vermelha lenta passava sem isso);
-4. Gaia DR3 só para os aprovados: fonte brilhante a 1" vira "suspeito" (não some do relatório)."""
+4. Gaia DR3 só para os aprovados, com o movimento próprio projetado até a última detecção: estrela que
+   andou até a posição, ou estrela mais brilhante que o pico em cima dela (raio maior se brilhante),
+   reprova; Gaia fora do ar marca "suspeito"."""
 
 from __future__ import annotations
 
@@ -33,7 +35,6 @@ DIAS = 60
 PROB = 0.4
 RAIO_TNS = 3.0  # arcsec
 RAIO_VSX = 5.0  # arcsec
-RAIO_GAIA = 1.0  # arcsec
 # critério (validado em 25/10/2026)
 MIN_POSITIVAS = 0.9
 MIN_AMPLITUDE = 2.0
@@ -214,18 +215,12 @@ def reprovado(m: dict[str, Any]) -> str | None:
     return None
 
 
-def gaia_brilhante(ra: float, dec: float, pico: float) -> Any:
-    """Fonte Gaia DR3 a até 1" mais brilhante que o pico + 1 mag (texto), None, ou SEM_RESPOSTA."""
-    linhas = catalogos.vizier("I/355/gaiadr3", ra, dec, RAIO_GAIA, "Source,Gmag")
-    if linhas is None:
-        return catalogos.SEM_RESPOSTA
-    for src, gmag in linhas:
-        try:
-            if float(gmag) < pico + 1:
-                return f"Gaia DR3 {src.strip()} G={float(gmag):.2f}"
-        except ValueError:
-            continue
-    return None
+def estrela_gaia(it: dict[str, Any]) -> Any:
+    """Motivo (texto) se a "erupção" é uma estrela do Gaia (que andou até ali ou brilhante em cima),
+    None, ou SEM_RESPOSTA. Usa a data da última detecção para projetar o movimento próprio."""
+    curva = it.get("curva") or []
+    mjd = it["mjd0"] + (curva[-1][0] if curva else 0.0)
+    return catalogos.estrela_no_lugar(it["ra"], it["dec"], mjd, it["pico"])
 
 
 def avaliar(obj: dict[str, Any]) -> dict[str, Any] | None:
@@ -311,10 +306,15 @@ def rodar(pasta: str, avisar: bool = False, cfg: Any = None, indice: Any = None,
     restantes = [o for o in fora_tns if o["oid"] not in vsx]
     with ThreadPoolExecutor(4) as ex:
         medidos = [m for m in ex.map(_seguro, restantes) if m]
-    aprovados = sorted((m for m in medidos if m["motivo"] is None), key=lambda m: -m["amplitude"])
-    for it in aprovados:
-        g = gaia_brilhante(it["ra"], it["dec"], it["pico"])
-        it["suspeito"] = "Gaia não respondeu" if g is catalogos.SEM_RESPOSTA else g
+    aprovados = []
+    for it in sorted((m for m in medidos if m["motivo"] is None), key=lambda m: -m["amplitude"]):
+        g = estrela_gaia(it)
+        if g is catalogos.SEM_RESPOSTA:
+            it["suspeito"] = "Gaia não respondeu"
+        elif g:  # é uma estrela: some do relatório
+            log.info("nova_ana_descartada", oid=it["oid"], motivo=g)
+            continue
+        aprovados.append(it)
     log.info(
         "novas_anas",
         candidatos=len(objs),

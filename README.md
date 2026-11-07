@@ -133,6 +133,14 @@ companion iPhone app (`CacaSNApp`) on the home network: port 8799, a bearer toke
 (created on first run, mode 600) and Bonjour `_cacasn._tcp`. Sending to TNS from the phone needs Face ID,
 repeats the OID, and the Mac re-runs the check sheet before sending; the TNS key never leaves the Mac.
 
+## Stars that moved
+
+Gaia gives positions at epoch 2016.0. A nearby star with a large proper motion can sit several arcseconds
+away from its catalogue position today and show up in the difference image as a "new" source. The check
+sheet and the dwarf-nova hunter therefore query Gaia DR3 within 30" and project every star to the
+detection date; a star that moved onto the candidate (>= 50 mas/yr, now within 2") or a star brighter
+than the detection + 1 mag sitting on it (radius 1.5"/2.5"/4" by brightness) rejects the candidate.
+
 ## Following your discoveries
 
 `cacasn --acompanhar 2026agsv` adds a TNS object to `acompanhar.json`. Every run then reads each

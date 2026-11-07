@@ -122,6 +122,7 @@ class TesteNaFicha(unittest.TestCase):
         "skybot": lambda ra, dec, mjd: [],
         "ned": lambda ra, dec: None,
         "nao_deteccao": lambda oid, mjd: {"mjd": 61329.0, "fid": 2, "limite": 20.2},
+        "estrela_movel": lambda ra, dec, mjd, mag: None,
     }
 
     def test_pendente_nao_vira_aviso(self):

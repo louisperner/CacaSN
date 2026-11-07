@@ -193,6 +193,7 @@ def montar(
         "nao_deteccao": nao_deteccao,
         "nao_deteccao_rubin": nao_deteccao_rubin,
         "historico": historico.historico,
+        "estrela_movel": catalogos.estrela_no_lugar,
     }
     s.update(servicos or {})
     ra, dec, mjd0 = it["ra"], it["dec"], it["mjd0"]
@@ -214,6 +215,13 @@ def montar(
         ficha[nome], erro = _tentar(chamada)
         if erro:
             ficha["falhas"][nome] = erro
+    ultima = mjd0 + ((it.get("curva") or [[0.0]])[-1][0])
+    if ficha["mag"] is not None:
+        r, erro = _tentar(lambda: s["estrela_movel"](ra, dec, ultima, float(ficha["mag"])))
+        if erro or r is catalogos.SEM_RESPOSTA:
+            ficha["falhas"]["estrela_movel"] = erro or "VizieR não respondeu"
+        else:
+            ficha["estrela_movel"] = r
     if pasta:
         ficha["historico"], erro = _tentar(lambda: s["historico"](it, pasta))
         if erro:
@@ -228,6 +236,8 @@ def montar(
     estrelas = [g for g in ficha["gaia"] or [] if (g["paralaxe_sigma"] or 0) > PARALAXE_SIGMA]
     if estrelas:
         motivos.append(f'estrela do Gaia a {estrelas[0]["sep"]}" (paralaxe {estrelas[0]["paralaxe_sigma"]:.0f} sigma)')
+    if ficha.get("estrela_movel"):
+        motivos.append(ficha["estrela_movel"])
     if ficha["skybot"]:
         motivos.append(f"asteroide conhecido na posição: {ficha['skybot'][0][:60]}")
     if not ficha["nao_deteccao"] and not fonte_nova_rubin(it):

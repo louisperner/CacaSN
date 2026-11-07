@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
@@ -48,7 +49,7 @@ SERVIDORES = (
 _preferido = 0  # o último que respondeu é tentado primeiro
 
 
-def vizier(fonte: str, ra: float, dec: float, raio: float, cols: str) -> list[list[str]] | None:
+def vizier(fonte: str, ra: float, dec: float, raio: float, cols: str, maximo: int = 5) -> list[list[str]] | None:
     """Linhas do catálogo perto da posição, ou None se nenhum servidor do VizieR respondeu."""
     global _preferido
     if VIZIER.aberto:
@@ -67,6 +68,73 @@ def vizier(fonte: str, ra: float, dec: float, raio: float, cols: str) -> list[li
             if n < len(ordem) - 1:
                 time.sleep(1)
     VIZIER.resultado(False)
+    return None
+
+
+def _sep(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
+    """Separação angular em ″ (haversine)."""
+    r1, d1, r2, d2 = map(math.radians, (ra1, dec1, ra2, dec2))
+    a = math.sin((d2 - d1) / 2) ** 2 + math.cos(d1) * math.cos(d2) * math.sin((r2 - r1) / 2) ** 2
+    return math.degrees(2 * math.asin(min(1.0, math.sqrt(a)))) * 3600
+
+
+# Gaia DR3: posições na época 2016,0 (MJD 57388). Uma estrela próxima anda até alguns ″ por ano; projetada para
+# a data da detecção ela pode cair em cima de um "transiente" que é só ela fora do lugar da referência
+# (ZTF26acctnkb, 2026-11: G 13,6 a 9 pc, 1,57″/ano, a 17″ da posição de 2016 e a 0,1″ da detecção).
+EPOCA_GAIA_MJD = 57388.0
+RAIO_MOVEL = 30.0  # ″: cobre ~3″/ano por 10 anos
+PM_ALTO = 50.0  # mas/ano
+
+
+def raio_brilho(g: float) -> float:
+    """Raio (″) em que uma estrela do Gaia de magnitude g ainda contamina a medida do ZTF."""
+    return 4.0 if g < 14 else 2.5 if g < 17 else 1.5
+
+
+def gaia_propagado(ra: float, dec: float, mjd: float, raio: float = RAIO_MOVEL) -> list[dict[str, Any]] | None:
+    """Estrelas do Gaia num raio de `raio`″, com a posição projetada para `mjd` pelo movimento próprio.
+    None se nenhum servidor do VizieR respondeu."""
+    linhas = vizier("I/355/gaiadr3", ra, dec, raio, "Source,RA_ICRS,DE_ICRS,Gmag,pmRA,pmDE", maximo=50)
+    if linhas is None:
+        return None
+    anos = (mjd - EPOCA_GAIA_MJD) / 365.25
+    saida = []
+    for src, r0, d0, g, pmra, pmde in linhas:
+        try:
+            r0f, d0f, gf = float(r0), float(d0), float(g)
+        except ValueError:
+            continue
+        pa = float(pmra) if pmra.strip() else 0.0  # mas/ano, já multiplicado por cos(dec)
+        pd = float(pmde) if pmde.strip() else 0.0
+        d1 = d0f + pd * anos / 3.6e6
+        r1 = r0f + pa * anos / 3.6e6 / math.cos(math.radians(d1))
+        saida.append(
+            {
+                "source": src.strip(),
+                "g": gf,
+                "pm": round(math.hypot(pa, pd), 1),
+                "sep_2016": round(_sep(ra, dec, r0f, d0f), 2),
+                "sep_agora": round(_sep(ra, dec, r1, d1), 2),
+            }
+        )
+    return saida
+
+
+def estrela_no_lugar(ra: float, dec: float, mjd: float, mag: float, consultar: Any = None) -> Any:
+    """A "fonte nova" é uma estrela do Gaia? Texto do motivo, None, ou SEM_RESPOSTA se o VizieR falhou.
+    (a) estrela de movimento próprio alto que ANDOU até a posição; (b) estrela mais brilhante que a
+    detecção + 1 mag em cima dela (raio maior para estrela brilhante): é ela variando."""
+    estrelas = (consultar or gaia_propagado)(ra, dec, mjd)
+    if estrelas is None:
+        return SEM_RESPOSTA
+    for e in sorted(estrelas, key=lambda e: e["sep_agora"]):
+        if e["pm"] >= PM_ALTO and e["sep_agora"] <= 2.0 and e["sep_2016"] > 1.0:
+            return (
+                f"estrela de movimento próprio alto: Gaia DR3 {e['source']} G={e['g']:.1f}, {e['pm'] / 1000:.2f}″/ano, "
+                f"a {e['sep_agora']}″ hoje (estava a {e['sep_2016']}″ em 2016)"
+            )
+        if e["g"] < mag + 1 and e["sep_agora"] <= raio_brilho(e["g"]):
+            return f"estrela do Gaia em cima: DR3 {e['source']} G={e['g']:.1f} a {e['sep_agora']}″ (é ela variando)"
     return None
 
 
