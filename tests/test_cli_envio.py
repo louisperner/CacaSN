@@ -95,5 +95,56 @@ class TesteOferecerEnvio(unittest.TestCase):
         env.assert_not_called()
 
 
+class TesteEnvioAutomatico(unittest.TestCase):
+    FORTE = dict(IT, nota=23.4, curva=[(0.0, 1, 19.5), (1.1, 2, 19.3), (2.0, 2, 19.1)])
+
+    def rodar(self, it, f=PRONTA, cfg=None):
+        cfg = cfg or dict(CFG, envio_automatico={"nota_min": 22, "noites_min": 2})
+        with (
+            tempfile.TemporaryDirectory() as d,
+            mock.patch.object(catalogos, "tns_carregar", return_value=cfg),
+            mock.patch.object(ficha, "montar", return_value=f),
+            mock.patch.object(envio, "enviar", return_value={"ok": True, "nome": "2026zzz", "report_id": 1, "erros": []}) as env,
+            mock.patch.object(cli.alertas, "notificar") as n,
+        ):
+            with open(os.path.join(d, "resultados.json"), "w") as arq:
+                json.dump([it], arq)
+            janelas = []
+            nomes = cli.oferecer_envio([it], d, aprovar=lambda t, x: janelas.append(t) or False)
+        return nomes, env, janelas, n
+
+    def test_forte_vai_sozinho_sem_janela(self):
+        nomes, env, janelas, n = self.rodar(self.FORTE)
+        self.assertEqual((nomes, janelas), (["2026zzz"], []))
+        env.assert_called_once()
+        self.assertEqual(n.call_args[0][0], "CacaSN: enviado sozinho!")
+
+    def test_nota_baixa_nao_vai(self):
+        nomes, env, _, _ = self.rodar(dict(self.FORTE, nota=21.9))
+        self.assertEqual(nomes, [])
+        env.assert_not_called()
+
+    def test_uma_noite_so_nao_vai(self):
+        nomes, env, _, _ = self.rodar(dict(self.FORTE, curva=[(0.0, 1, 19.5), (0.05, 2, 19.3)]))
+        env.assert_not_called()
+
+    def test_com_aviso_nao_vai(self):
+        nomes, env, _, _ = self.rodar(self.FORTE, dict(PRONTA, avisos=["no núcleo da galáxia"]))
+        env.assert_not_called()
+
+    def test_rubin_nunca_vai_sozinho(self):
+        nomes, env, _, _ = self.rodar(dict(self.FORTE, fonte="rubin"))
+        env.assert_not_called()
+
+    def test_sem_regra_nao_vai(self):
+        nomes, env, _, _ = self.rodar(self.FORTE, cfg=dict(CFG))
+        env.assert_not_called()
+
+    def test_forte_com_dialogo_ligado_tambem_nao_pergunta(self):
+        cfg = dict(CFG, aprovar_por_dialogo=True, envio_automatico={"nota_min": 22})
+        nomes, env, janelas, _ = self.rodar(self.FORTE, cfg=cfg)
+        self.assertEqual((nomes, janelas), (["2026zzz"], []))
+
+
 if __name__ == "__main__":
     unittest.main()

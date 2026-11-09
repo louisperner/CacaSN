@@ -134,7 +134,7 @@ def historico(it: dict[str, Any], pasta: str, pedir: Callable[..., tuple[int, An
     if not e.get("tarefa"):
         dados = {"ra": it["ra"], "dec": it["dec"], "mjd_min": MJD_INICIO, "send_email": False}
         _, b = pedir(f"{ATLAS}/queue/", token, dados)
-        estado[oid] = {"tarefa": json.loads(b)["url"], "pedido": time.time()}
+        estado[oid] = {"tarefa": json.loads(b)["url"], "pedido": time.time(), "mjd0": it["mjd0"]}
         gravar_json(caminho, estado, indent=1)
         return {"pendente": True, "veredito": "pedido na fila do ATLAS; rode a ficha de novo mais tarde"}
     _, b = pedir(e["tarefa"], token)
@@ -159,3 +159,35 @@ def historico(it: dict[str, Any], pasta: str, pedir: Callable[..., tuple[int, An
     estado[oid] = {"resumo": resumo}
     gravar_json(caminho, estado, indent=1)
     return resumo
+
+
+VALIDADE = 3 * 86400  # s: pedido que não terminou em 3 dias é esquecido (a ficha pede de novo)
+
+
+def recolher(pasta: str, pedir: Callable[..., tuple[int, Any]] = _pedir, agora: Callable[[], float] = time.time) -> list[str]:
+    """A cada rodada: baixa os pedidos ao ATLAS que ficaram prontos (sem precisar refazer a ficha) e esquece
+    os velhos demais ou sem a data da descoberta. Devolve os OIDs resolvidos."""
+    token = credenciais(pasta).get("atlas_token")
+    caminho, estado = _estado(pasta)
+    if not token or not estado:
+        return []
+    velhos = [
+        oid
+        for oid, e in estado.items()
+        if e.get("tarefa") and ("mjd0" not in e or agora() - float(e.get("pedido") or 0) > VALIDADE)
+    ]
+    for oid in velhos:
+        estado.pop(oid)
+    if velhos:
+        gravar_json(caminho, estado, indent=1)
+    resolvidos = []
+    for oid, e in list(estado.items()):
+        if not e.get("tarefa"):
+            continue
+        try:
+            r = historico({"oid": oid, "ra": None, "dec": None, "mjd0": e["mjd0"]}, pasta, pedir)
+        except Exception:
+            continue
+        if r and not r.get("pendente"):
+            resolvidos.append(oid)
+    return resolvidos
