@@ -114,6 +114,35 @@ class TesteSemEspera(unittest.TestCase):
         self.assertEqual(sum(1 for u, m in self.chamadas if u.endswith("/queue/")), 2)
 
 
+class TesteRecolher(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        with open(os.path.join(self.d, historico.ARQUIVO), "w") as f:
+            json.dump({"atlas_token": "tok"}, f)
+
+    def pedir(self, url, token, dados=None, metodo=None):
+        if url.endswith("/queue/"):
+            return 201, json.dumps({"url": "T"}).encode()
+        if url == "T" and metodo is None:
+            return 200, json.dumps({"finishtimestamp": "f", "error_msg": None, "result_url": "R"}).encode()
+        if url == "R":
+            return 200, arquivo([(58000.0, 3.0)]).encode()
+        return 204, b""
+
+    def test_rodada_recolhe_sem_refazer_a_ficha(self):
+        historico.historico({"oid": "ZTF26x", "ra": 1.0, "dec": 2.0, "mjd0": 61331.0}, self.d, self.pedir)
+        self.assertEqual(historico.recolher(self.d, self.pedir), ["ZTF26x"])
+        with open(os.path.join(self.d, historico.ESTADO)) as f:
+            self.assertIn("resumo", json.load(f)["ZTF26x"])
+
+    def test_esquece_pedido_antigo_ou_sem_data(self):
+        with open(os.path.join(self.d, historico.ESTADO), "w") as f:
+            json.dump({"velho": {"tarefa": "T", "pedido": 0, "mjd0": 1.0}, "sem_data": {"tarefa": "T", "pedido": 1e12}}, f)
+        self.assertEqual(historico.recolher(self.d, self.pedir, agora=lambda: 1e12), [])
+        with open(os.path.join(self.d, historico.ESTADO)) as f:
+            self.assertEqual(json.load(f), {})
+
+
 class TesteNaFicha(unittest.TestCase):
     IT = {"oid": "ZTF26x", "ra": 1.0, "dec": 2.0, "mjd0": 61331.0, "mag": 20.0, "curva": [(0, 1, 20), (1, 2, 20)]}
     BASE = {

@@ -19,6 +19,7 @@ from . import (
     curva,
     envio,
     ficha,
+    historico,
     novas_anas,
     novidades,
     registro,
@@ -195,6 +196,10 @@ def rodar(
             oferecer_envio(novos, pasta)
         except Exception as e:  # erro no envio não derruba a rodada
             log.error("oferecer_envio_falhou", erro=repr(e))
+    try:  # pedidos ao ATLAS que ficaram prontos desde a última rodada
+        historico.recolher(pasta)
+    except Exception as e:
+        log.warning("atlas_recolher_falhou", erro=repr(e))
     if rapido:
         return itens
     acompanhamento.verificar(tns, pasta)
@@ -289,11 +294,33 @@ def mostrar_ficha(oid: str, pasta: str = PASTA) -> int:
     return 0
 
 
+def noites(it: dict[str, Any]) -> int:
+    """Noites distintas com detecção (curva em dias desde a 1ª detecção)."""
+    mjd0 = float(it.get("mjd0") or 0)
+    return len({int(mjd0 + p[0]) for p in it.get("curva") or []})
+
+
+def automatico(it: dict[str, Any], f: dict[str, Any], pendencias: list[str], cfg: dict[str, Any]) -> bool:
+    """Envio sem perguntar só para o caso muito forte (`"envio_automatico"` no tns.json): ZTF, nota alta,
+    ficha limpa, sem nenhum aviso (núcleo, histórico do ATLAS) e visto em noites diferentes."""
+    regra = cfg.get("envio_automatico") or {}
+    if not regra or it.get("fonte", "ztf") != "ztf":
+        return False
+    return (
+        float(it.get("nota") or 0) >= float(regra.get("nota_min", 22))
+        and noites(it) >= int(regra.get("noites_min", 2))
+        and bool(f.get("pronto"))
+        and not pendencias
+        and not f.get("avisos")
+    )
+
+
 def oferecer_envio(novos: list[dict[str, Any]], pasta: str, aprovar: Any = alertas.pedir_aprovacao) -> list[str]:
-    """No agendamento: para cada candidato novo do ZTF com ficha pronta, pergunta numa
-    janela se envia. Só com "aprovar_por_dialogo": true no tns.json; devolve os nomes AT."""
+    """No agendamento: para cada candidato novo do ZTF com ficha pronta, envia sozinho se for um caso
+    muito forte (`"envio_automatico"`) ou pergunta numa janela (`"aprovar_por_dialogo": true`).
+    Devolve os nomes AT."""
     cfg = catalogos.tns_carregar(pasta) or {}
-    if not cfg.get("aprovar_por_dialogo"):
+    if not cfg.get("aprovar_por_dialogo") and not cfg.get("envio_automatico"):
         return []
     log, nomes = registro.obter(), []
     for novo in novos:
@@ -306,15 +333,21 @@ def oferecer_envio(novos: list[dict[str, Any]], pasta: str, aprovar: Any = alert
         if not f["pronto"] or pendencias:
             log.info("ficha_nao_pronta", oid=it["oid"], motivos=f["motivos"], pendencias=pendencias)
             continue
-        if not aprovar(f"CacaSN: enviar {it['oid']}?", ficha.texto(f)):
-            log.info("envio_adiado", oid=it["oid"])
-            continue
+        sozinho = automatico(it, f, pendencias, cfg)
+        if not sozinho:
+            if not cfg.get("aprovar_por_dialogo") or not aprovar(f"CacaSN: enviar {it['oid']}?", ficha.texto(f)):
+                log.info("envio_adiado", oid=it["oid"])
+                continue
         res = envio.enviar(relatorio, cfg)
-        log.warning("envio_tns", oid=it["oid"], sandbox=False, ok=res["ok"], nome=res["nome"], erros=res["erros"])
+        log.warning(
+            "envio_tns", oid=it["oid"], sandbox=False, ok=res["ok"], nome=res["nome"], erros=res["erros"], automatico=sozinho
+        )
         if res["ok"] and res["nome"]:
             acompanhamento.adicionar(pasta, res["nome"])
             nomes.append(res["nome"])
-            alertas.notificar("CacaSN: enviado!", f"{it['oid']} virou AT {res['nome']}", os.path.join(pasta, "report.html"))
+            titulo = "CacaSN: enviado sozinho!" if sozinho else "CacaSN: enviado!"
+            texto = f"{it['oid']} virou AT {res['nome']}" + (f" (nota {it.get('nota')}, {noites(it)} noites)" if sozinho else "")
+            alertas.notificar(titulo, texto, os.path.join(pasta, "report.html"))
         else:
             alertas.notificar(
                 "CacaSN: o TNS recusou", f"{it['oid']}: " + "; ".join(res["erros"])[:180], os.path.join(pasta, "report.html")

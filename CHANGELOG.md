@@ -2,6 +2,20 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.18.0] - 2026-11-09
+
+### Adicionado
+- Envio automático para o caso muito forte (`"envio_automatico": {"nota_min": 22, "noites_min": 2}` no
+  tns.json): ZTF, nota >= 22, ficha limpa, sem pendências, sem nenhum aviso (núcleo, histórico do ATLAS) e
+  detecções em 2+ noites; vai sem janela e avisa "enviado sozinho". O resto segue pela janela de aprovação.
+  Rubin nunca vai sozinho. Motivo: de 31/10 a 08/11 o placar foi 6 enviados × 6 perdidos, todos por falta
+  de aprovação a tempo (aiom 23,4 e aiup 22,2 passariam).
+
+### Corrigido
+- Histórico do ATLAS nunca chegava: o resultado só era buscado quando a ficha rodava de novo, e as rodadas
+  não refazem a ficha (13 pedidos "pendentes" com as tarefas já prontas no servidor). Agora toda rodada
+  (inclusive a rápida) recolhe os prontos; pedido sem a data da descoberta ou com mais de 3 dias é esquecido.
+
 ## [0.17.0] - 2026-11-07
 
 ### Corrigido

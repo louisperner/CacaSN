@@ -115,7 +115,9 @@ logged, and the new AT is added to the follow-up list. Reporting through the API
 create one, link your bot to it and put its ID in `reporting_groupid`. With `"aprovar_por_dialogo": true`
 in `tns.json`, a scheduled `--avisar` run also opens a macOS dialog for each new ZTF candidate whose
 check sheet is clean ("Depois" / "Enviar ao TNS"); nothing is sent without the click, and the dialog
-closes by itself after 30 minutes.
+closes by itself after 30 minutes. With `"envio_automatico": {"nota_min": 22, "noites_min": 2}`, a ZTF
+candidate that clears everything (score >= 22, clean check sheet with no warnings, detections on 2+
+nights) is sent without asking and you get an "enviado sozinho" notification; Rubin candidates always ask.
 
 ## Long history (ATLAS forced photometry)
 
