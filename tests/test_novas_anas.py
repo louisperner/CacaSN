@@ -87,7 +87,7 @@ class TesteRodada(unittest.TestCase):
         with (
             mock.patch.object(novas_anas, "get_json", falso_get_json(curvas)),
             mock.patch.object(novas_anas, "postar", enviar),
-            mock.patch.object(novas_anas, "gaia_brilhante", return_value=gaia),
+            mock.patch.object(novas_anas, "estrela_gaia", return_value=gaia),
             mock.patch.object(novas_anas, "vsx_um_por_um", plano_b or mock.Mock(side_effect=OSError("espelhos fora"))),
             mock.patch.object(novas_anas.alertas, "notificar") as n,
         ):
@@ -123,16 +123,48 @@ class TesteRodada(unittest.TestCase):
             aprovadas, n = self.rodar(d, enviar=quebra, plano_b=lambda objs: {"ZTF26vsx": "V1 (UGSS)"})
             self.assertEqual([a["oid"] for a in aprovadas], ["ZTF26ana"])
 
-    def test_gaia_brilhante_marca_suspeito(self):
+    def test_estrela_do_gaia_reprova(self):
         with tempfile.TemporaryDirectory() as d:
-            aprovadas, _ = self.rodar(d, gaia="Gaia DR3 1 G=12.00")
-        self.assertEqual(aprovadas[0]["suspeito"], "Gaia DR3 1 G=12.00")
+            aprovadas, n = self.rodar(d, gaia="estrela de movimento próprio alto: Gaia DR3 1")
+        self.assertEqual(aprovadas, [])
+        n.assert_not_called()
 
-    def test_gaia_brilhante(self):
-        with mock.patch.object(catalogos, "vizier", return_value=[["123 ", "15.0"], ["9", "19"]]):
-            self.assertEqual(novas_anas.gaia_brilhante(1, 1, 16.5), "Gaia DR3 123 G=15.00")
-        with mock.patch.object(catalogos, "vizier", return_value=[["9", "19"]]):
-            self.assertIsNone(novas_anas.gaia_brilhante(1, 1, 16.5))
+    def test_gaia_fora_marca_suspeito(self):
+        with tempfile.TemporaryDirectory() as d:
+            aprovadas, _ = self.rodar(d, gaia=catalogos.SEM_RESPOSTA)
+        self.assertEqual(aprovadas[0]["suspeito"], "Gaia não respondeu")
+
+
+class TesteEstrelaNoLugar(unittest.TestCase):
+    # ZTF26acctnkb (2026-11): Gaia DR3 3186021141200137472, G 13,6, pm (238, -1552) mas/ano, a 9,4 pc
+    ESTRELA = ["3186021141200137472", "069.44860243520", "-08.82651621861", "13.600672", "  238.381", "-1552.408"]
+
+    def test_estrela_de_movimento_alto_que_andou(self):
+        with mock.patch.object(catalogos, "vizier", return_value=[self.ESTRELA]):
+            r = catalogos.estrela_no_lugar(69.44933, -8.83118, 61351.4, 13.55)
+        self.assertIn("movimento próprio alto", r)
+        self.assertIn("1.57″/ano", r)
+
+    def test_mesma_estrela_longe_do_candidato_nao_conta(self):
+        with mock.patch.object(catalogos, "vizier", return_value=[self.ESTRELA]):
+            self.assertIsNone(catalogos.estrela_no_lugar(69.4510, -8.8200, 61351.4, 13.55))
+
+    def test_estrela_brilhante_em_cima_raio_cresce(self):
+        linha = ["9", "92.77175", "-6.19950", "15.72", "0", "0"]  # a 1,04″
+        with mock.patch.object(catalogos, "vizier", return_value=[linha]):
+            self.assertIn("é ela variando", catalogos.estrela_no_lugar(92.77175, -6.19921, 61351.4, 18.04))
+        fraca = ["9", "92.77175", "-6.19950", "19.5", "0", "0"]  # mais fraca que o pico + 1: pode ser a contraparte
+        with mock.patch.object(catalogos, "vizier", return_value=[fraca]):
+            self.assertIsNone(catalogos.estrela_no_lugar(92.77175, -6.19921, 61351.4, 18.04))
+
+    def test_vizier_fora(self):
+        with mock.patch.object(catalogos, "vizier", return_value=None):
+            self.assertIs(catalogos.estrela_no_lugar(1, 1, 61351, 15), catalogos.SEM_RESPOSTA)
+
+    def test_pm_vazio_no_catalogo(self):
+        linha = ["9", "1.0", "1.0", "15.0", "", ""]
+        with mock.patch.object(catalogos, "vizier", return_value=[linha]):
+            self.assertIn("é ela variando", catalogos.estrela_no_lugar(1.0, 1.0, 61351, 16.0))
 
     def test_rascunho_outro_e_observacao(self):
         it = dict(novas_anas.medir(ANA), oid="ZTF26ana", ra=1.0, dec=10.0, fonte="ztf")

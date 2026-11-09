@@ -106,5 +106,16 @@ class TesteVerificar(unittest.TestCase):
             self.assertEqual(novidades.verificar(None, d, set()), [])
 
 
+class TesteRarosNovos(unittest.TestCase):
+    def test_ia_csm_e_outros_avisam(self):
+        for tipo in ("SN Ia-CSM", "SN Iax[02cx-like]", "SN Ia-SC", "SN II-pec"):
+            d = {"name_prefix": "SN", "name": "2026sqf", "type": tipo, "redshift": "0.03"}
+            self.assertIn("raro", novidades.destaque(d, set()) or "", tipo)
+
+    def test_ia_comum_nao_avisa(self):
+        d = {"name_prefix": "SN", "name": "2026x", "type": "SN Ia", "redshift": "0.03"}
+        self.assertIsNone(novidades.destaque(d, set()))
+
+
 if __name__ == "__main__":
     unittest.main()

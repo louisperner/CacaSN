@@ -28,7 +28,23 @@ URL = "https://www.wis-tns.org/system/files/tns_public_objects/tns_public_object
 ESTADO = "novidades_estado.json"
 RESUMO = "novidades.md"
 # tipos raros: valem aviso mesmo que o CacaSN não tenha visto o objeto
-RAROS = ("SLSN", "TDE", "Kilonova", "FBOT", "Ic-BL", "IIn", "Ibn", "Icn", "Ca-rich", "LRN", "LBV")
+RAROS = (
+    "SLSN",
+    "TDE",
+    "Kilonova",
+    "FBOT",
+    "Ic-BL",
+    "IIn",
+    "Ibn",
+    "Icn",
+    "Ca-rich",
+    "LRN",
+    "LBV",
+    "Ia-CSM",
+    "Iax",
+    "Ia-SC",
+    "II-pec",  # 2026-11: a SN 2026sqf (Ia-CSM) passou sem aviso
+)
 MAX_DIAS = 7
 
 
