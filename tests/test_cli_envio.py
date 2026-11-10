@@ -95,10 +95,19 @@ class TesteOferecerEnvio(unittest.TestCase):
         env.assert_not_called()
 
 
+LIMPA_ATLAS = dict(PRONTA, historico={"ativa_antes": False, "veredito": "nada antes"})
+
+
 class TesteEnvioAutomatico(unittest.TestCase):
+    # RA/Dec do IT (157,5; +8,1) estão a b = +52°, longe do plano da Galáxia
     FORTE = dict(IT, nota=23.4, curva=[(0.0, 1, 19.5), (1.1, 2, 19.3), (2.0, 2, 19.1)])
 
-    def rodar(self, it, f=PRONTA, cfg=None):
+    def setUp(self):
+        p = mock.patch.object(catalogos, "ps1_puntiforme", return_value=None)
+        self.ps1 = p.start()
+        self.addCleanup(p.stop)
+
+    def rodar(self, it, f=LIMPA_ATLAS, cfg=None):
         cfg = cfg or dict(CFG, envio_automatico={"nota_min": 22, "noites_min": 2})
         with (
             tempfile.TemporaryDirectory() as d,
@@ -129,7 +138,34 @@ class TesteEnvioAutomatico(unittest.TestCase):
         env.assert_not_called()
 
     def test_com_aviso_nao_vai(self):
-        nomes, env, _, _ = self.rodar(self.FORTE, dict(PRONTA, avisos=["no núcleo da galáxia"]))
+        nomes, env, _, _ = self.rodar(self.FORTE, dict(LIMPA_ATLAS, avisos=["no núcleo da galáxia"]))
+        env.assert_not_called()
+
+    def test_atlas_na_fila_nao_vai(self):
+        # AT 2026ajce (2026-11-10): foi sozinha com o histórico do ATLAS ainda pendente
+        nomes, env, _, _ = self.rodar(self.FORTE, dict(PRONTA, historico={"pendente": True, "veredito": "na fila"}))
+        env.assert_not_called()
+
+    def test_sem_historico_nao_vai(self):
+        nomes, env, _, _ = self.rodar(self.FORTE, PRONTA)
+        env.assert_not_called()
+
+    def test_atlas_ja_variava_nao_vai(self):
+        nomes, env, _, _ = self.rodar(self.FORTE, dict(PRONTA, historico={"ativa_antes": True, "veredito": "variava"}))
+        env.assert_not_called()
+
+    def test_perto_do_plano_da_galaxia_nao_vai(self):
+        nomes, env, _, _ = self.rodar(dict(self.FORTE, ra=109.02304, dec=10.27428))  # b = +10°, a posição da ajce
+        env.assert_not_called()
+
+    def test_estrela_pontual_do_ps1_nao_vai(self):
+        self.ps1.return_value = "fonte pontual do Pan-STARRS X r=19.8"
+        nomes, env, _, _ = self.rodar(self.FORTE)
+        env.assert_not_called()
+
+    def test_ps1_fora_do_ar_nao_vai(self):
+        self.ps1.side_effect = OSError("MAST fora")
+        nomes, env, _, _ = self.rodar(self.FORTE)
         env.assert_not_called()
 
     def test_rubin_nunca_vai_sozinho(self):
