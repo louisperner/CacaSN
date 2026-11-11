@@ -300,19 +300,40 @@ def noites(it: dict[str, Any]) -> int:
     return len({int(mjd0 + p[0]) for p in it.get("curva") or []})
 
 
-def automatico(it: dict[str, Any], f: dict[str, Any], pendencias: list[str], cfg: dict[str, Any]) -> bool:
+B_MIN_AUTO = 15.0  # graus: perto do plano da Galáxia sobram estrelas variáveis
+
+
+def automatico(it: dict[str, Any], f: dict[str, Any], pendencias: list[str], cfg: dict[str, Any], ps1: Any = None) -> bool:
     """Envio sem perguntar só para o caso muito forte (`"envio_automatico"` no tns.json): ZTF, nota alta,
-    ficha limpa, sem nenhum aviso (núcleo, histórico do ATLAS) e visto em noites diferentes."""
+    ficha limpa sem nenhum aviso, visto em noites diferentes, histórico do ATLAS PRONTO e limpo, longe do
+    plano da Galáxia (|b| >= 15°) e sem fonte pontual do Pan-STARRS em cima. Na dúvida (serviço fora,
+    ATLAS na fila), não vai sozinho: cai na janela de aprovação. (AT 2026ajce, 2026-11-10, passou com o
+    ATLAS ainda na fila, a b = 10° e com uma estrela r 20,5 do Pan-STARRS a 1,2″.)"""
     regra = cfg.get("envio_automatico") or {}
     if not regra or it.get("fonte", "ztf") != "ztf":
         return False
-    return (
+    hist = f.get("historico") or {}
+    if not (
         float(it.get("nota") or 0) >= float(regra.get("nota_min", 22))
         and noites(it) >= int(regra.get("noites_min", 2))
         and bool(f.get("pronto"))
         and not pendencias
         and not f.get("avisos")
-    )
+        and hist
+        and not hist.get("pendente")
+        and not hist.get("ativa_antes")
+        and abs(catalogos.latitude_galactica(it["ra"], it["dec"])) >= float(regra.get("b_min", B_MIN_AUTO))
+    ):
+        return False
+    try:
+        estrela = (ps1 or catalogos.ps1_puntiforme)(it["ra"], it["dec"], float(it.get("mag") or 99))
+    except Exception as e:
+        registro.obter().info("ps1_falhou", oid=it.get("oid"), erro=repr(e))
+        return False
+    if estrela:
+        registro.obter().info("auto_barrado", oid=it.get("oid"), motivo=estrela)
+        return False
+    return True
 
 
 def oferecer_envio(novos: list[dict[str, Any]], pasta: str, aprovar: Any = alertas.pedir_aprovacao) -> list[str]:

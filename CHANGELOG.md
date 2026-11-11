@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.19.0] - 2026-11-10
+
+### Mudado
+- Envio automático mais conservador. Além de nota, noites e ficha sem aviso, agora exige: histórico do ATLAS
+  **pronto** e limpo (na fila não conta), |b| >= 15° (longe do plano da Galáxia, `b_min` no tns.json) e
+  nenhuma fonte **pontual** do Pan-STARRS DR2 mais brilhante que a detecção + 1 mag a até 1,5″ (estrela
+  fraca demais para o Gaia; pontual = PSF - Kron < 0,05). Qualquer serviço fora do ar = não vai sozinho
+  (cai na janela). A 1ª AT enviada sozinha (AT 2026ajce, 10/11) saiu com o ATLAS ainda na fila e a b = 10°;
+  a fonte do PS1 a 1,2″ é estendida (galáxia compacta), então era provavelmente uma supernova mesmo.
+
 ## [0.18.0] - 2026-11-09
 
 ### Adicionado

@@ -122,5 +122,24 @@ class TesteTNS(unittest.TestCase):
                 catalogos.tns_busca(self.CFG, 1.0, 2.0)
 
 
+class TestePS1(unittest.TestCase):
+    CAB = "objName,rMeanPSFMag,rMeanKronMag\n"
+
+    def test_pontual_brilhante_marca(self):
+        r = catalogos.ps1_puntiforme(1, 1, 20.0, ler=lambda u: self.CAB + "PSO A,19.80,19.78\n")
+        self.assertIn("pontual", r)
+
+    def test_estendida_nao_marca(self):
+        # AT 2026ajce: PSO J109.0233+10.2745, r PSF 20,51, Kron 20,37 (galáxia compacta)
+        self.assertIsNone(catalogos.ps1_puntiforme(109.02, 10.27, 20.17, ler=lambda u: self.CAB + "PSO J,20.51,20.37\n"))
+
+    def test_pontual_fraca_nao_marca(self):
+        self.assertIsNone(catalogos.ps1_puntiforme(1, 1, 20.0, ler=lambda u: self.CAB + "PSO A,21.50,21.49\n"))
+
+    def test_latitude_galactica(self):
+        self.assertAlmostEqual(catalogos.latitude_galactica(109.02304, 10.27428), 10.1, delta=0.1)
+        self.assertAlmostEqual(catalogos.latitude_galactica(192.85948, 27.12825), 90.0, delta=0.01)
+
+
 if __name__ == "__main__":
     unittest.main()

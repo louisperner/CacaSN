@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import math
 import os
@@ -135,6 +137,36 @@ def estrela_no_lugar(ra: float, dec: float, mjd: float, mag: float, consultar: A
             )
         if e["g"] < mag + 1 and e["sep_agora"] <= raio_brilho(e["g"]):
             return f"estrela do Gaia em cima: DR3 {e['source']} G={e['g']:.1f} a {e['sep_agora']}″ (é ela variando)"
+    return None
+
+
+PS1 = "https://catalogs.mast.stsci.edu/api/v0.1/panstarrs/dr2/mean.csv"
+
+
+def latitude_galactica(ra: float, dec: float) -> float:
+    """Latitude galáctica b (graus), polo norte galáctico J2000 em (192,85948; 27,12825)."""
+    r, d = math.radians(ra), math.radians(dec)
+    rp, dp = math.radians(192.85948), math.radians(27.12825)
+    return math.degrees(math.asin(math.sin(d) * math.sin(dp) + math.cos(d) * math.cos(dp) * math.cos(r - rp)))
+
+
+def ps1_puntiforme(ra: float, dec: float, mag: float, raio: float = 1.5, ler: Any = None) -> str | None:
+    """Fonte PONTUAL do Pan-STARRS DR2 a até `raio`″, mais brilhante que a detecção + 1 mag: uma estrela
+    fraca demais para o Gaia (G > 21) que pode ser a própria fonte variando (AT 2026ajce, 2026-11:
+    r 20,5 pontual a 1,2″, transiente em 20,2). Pontual = PSF - Kron < 0,05 mag. Erro de rede sobe."""
+    q = urllib.parse.urlencode({"ra": ra, "dec": dec, "radius": raio / 3600, "nDetections.gte": 2})
+    if ler is None:
+        with urllib.request.urlopen(urllib.request.Request(f"{PS1}?{q}", headers=HDR), timeout=60) as r:
+            texto = r.read().decode()
+    else:
+        texto = ler(f"{PS1}?{q}")
+    for l in csv.DictReader(io.StringIO(texto)):
+        try:
+            psf, kron = float(l["rMeanPSFMag"]), float(l["rMeanKronMag"])
+        except (KeyError, ValueError):
+            continue
+        if psf > 0 and kron > 0 and psf - kron < 0.05 and psf < mag + 1:
+            return f"fonte pontual do Pan-STARRS {l.get('objName', '').strip()} r={psf:.2f} (estrela fraca para o Gaia?)"
     return None
 
 
