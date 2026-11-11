@@ -1,3 +1,3 @@
 """CacaSN: caçador de supernovas nos alertas públicos do ZTF (via ALeRCE)."""
 
-__version__ = "0.19.0"
+__version__ = "0.20.0"

@@ -168,15 +168,33 @@ def rodar(
     log = registro.obter()
     tns = catalogos.tns_carregar(pasta)
     itens: list[dict[str, Any]] = []
-    if "ztf" in fontes:
-        itens += rodar_ztf(dias, prob, tns, pasta, a_partir)
-    if "rubin" in fontes:
+    falharam: list[str] = []
+
+    def _ztf() -> list[dict[str, Any]]:
+        return rodar_ztf(dias, prob, tns, pasta, a_partir)
+
+    def _rubin() -> list[dict[str, Any]]:
         vigiar_fluxo_rubin(pasta)
-        itens += rodar_rubin(dias, tns)
+        return rodar_rubin(dias, tns)
+
+    # cada fonte por si: um 500 da ALeRCE não pode cegar o Rubin (e vice-versa). Em 11/11/2026 uma falha
+    # derrubou 19 rodadas seguidas, das 02:09 às 09:41 UTC.
+    for nome, buscar in (("ztf", _ztf), ("rubin", _rubin)):
+        if nome not in fontes:
+            continue
+        try:
+            itens += buscar()
+        except Exception as e:
+            falharam.append(nome)
+            url = getattr(e, "url", None) or getattr(e, "filename", None)
+            log.error("fonte_falhou", fonte=nome, erro=repr(e), url=url)
+    if falharam and len(falharam) == len([f for f in FONTES if f in fontes]):
+        raise RuntimeError(f"todas as fontes falharam: {', '.join(falharam)}")
     for it in itens:
         if (m := curva.motivo_subida(it.get("curva", []), it.get("idade", 99))) and m not in it["motivos"]:
             it["motivos"].append(m)
-    salvos = juntar(ler_json(os.path.join(pasta, "resultados.json"), []), itens) if rapido else itens
+    # rodada rápida, ou com uma fonte fora: os candidatos dela continuam do resultados.json anterior
+    salvos = juntar(ler_json(os.path.join(pasta, "resultados.json"), []), itens) if rapido or falharam else itens
     gravar_json(os.path.join(pasta, "resultados.json"), salvos, indent=1)
     gravar_texto(os.path.join(pasta, "report.html"), relatorio(salvos))
     for fonte in fontes:

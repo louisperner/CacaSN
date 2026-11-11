@@ -237,5 +237,44 @@ class TesteRascunho(unittest.TestCase):
             self.assertEqual(cli.gerar_rascunho("nada", pasta=d), 1)
 
 
+class TesteFonteFora(unittest.TestCase):
+    """Em 11/11/2026 um HTTP 500 derrubou 19 rodadas inteiras: agora cada fonte é isolada."""
+
+    RUBIN = {"oid": "LSST 9", "fonte": "rubin", "nota": 14.0, "conhecido": "NÃO está no TNS", "curva": [], "idade": 1}
+    ZTF_VELHO = {"oid": "ZTF26velho", "fonte": "ztf", "nota": 20.0, "conhecido": "NÃO está no TNS", "curva": []}
+
+    def rodar(self, d, ztf, rubin):
+        with (
+            mock.patch.object(cli, "rodar_ztf", side_effect=ztf),
+            mock.patch.object(cli, "rodar_rubin", side_effect=rubin),
+            mock.patch.object(cli, "vigiar_fluxo_rubin"),
+            mock.patch.object(cli.catalogos, "tns_carregar", return_value=None),
+            mock.patch.object(cli.historico, "recolher", return_value=[]),
+            mock.patch.object(cli.acompanhamento, "verificar"),
+            mock.patch.object(cli.novidades, "verificar"),
+            mock.patch.object(cli, "relatorio", return_value=""),
+        ):
+            return cli.rodar(2, 0.5, False, pasta=d)
+
+    def test_ztf_fora_rubin_continua_e_guarda_os_antigos(self):
+        def cai(*a):
+            raise OSError("HTTP 500")
+
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "resultados.json"), "w") as f:
+                json.dump([self.ZTF_VELHO], f)
+            itens = self.rodar(d, cai, lambda *a: [dict(self.RUBIN)])
+            self.assertEqual([i["oid"] for i in itens], ["LSST 9"])
+            with open(os.path.join(d, "resultados.json")) as f:
+                self.assertEqual({i["oid"] for i in json.load(f)}, {"LSST 9", "ZTF26velho"})
+
+    def test_todas_fora_falha(self):
+        def cai(*a):
+            raise OSError("HTTP 500")
+
+        with tempfile.TemporaryDirectory() as d, self.assertRaises(RuntimeError):
+            self.rodar(d, cai, cai)
+
+
 if __name__ == "__main__":
     unittest.main()

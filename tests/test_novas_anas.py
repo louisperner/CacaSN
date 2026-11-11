@@ -76,6 +76,29 @@ class TesteMedidas(unittest.TestCase):
         dets = [dict(det(i, 1, 18.0), corrected=True, magpsf_corr=16.0 + i) for i in range(4)]
         self.assertEqual(novas_anas.medir({"detections": dets})["amplitude"], 3.0)
 
+    def test_curva_plana_reprova(self):
+        # ZTF26acazneg: r 12,33-12,41 por 33 dias
+        m = {
+            "fracao_positiva": 1.0,
+            "amplitude": 7.8,
+            "deteccoes": 15,
+            "duracao": 33.0,
+            "cor_gr": None,
+            "curva": [(0.0, 2, 12.36), (10.0, 2, 12.40), (33.0, 2, 12.33)],
+        }
+        self.assertIn("curva plana", novas_anas.reprovado(m))
+
+    def test_curta_e_plana_ainda_passa(self):
+        m = {
+            "fracao_positiva": 1.0,
+            "amplitude": 3.0,
+            "deteccoes": 5,
+            "duracao": 5.0,
+            "cor_gr": 0.2,
+            "curva": [(0.0, 1, 15.0), (5.0, 1, 15.1)],
+        }
+        self.assertIsNone(novas_anas.reprovado(m))
+
     def test_negativas_reprovam(self):
         lc = {"detections": ANA["detections"] + [det(7, 1, 19.0, pos="f")], "non_detections": ANA["non_detections"]}
         self.assertIn("positivas", novas_anas.reprovado(novas_anas.medir(lc)))

@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.20.0] - 2026-11-11
+
+### Corrigido
+- Uma fonte fora do ar derrubava a rodada inteira: em 11/11/2026 um HTTP 500 cegou o CacaSN por 7,5 h (19 rodadas,
+  02:09-09:41 UTC, o horário dos alertas novos). Agora ZTF e Rubin rodam cada um por si; a falha vai para o log
+  (`fonte_falhou`, com a URL quando houver) e os candidatos da fonte que caiu continuam no `resultados.json`
+  anterior (o `--enviar` segue achando). Só falha a rodada se todas as fontes caírem.
+- Novas anãs: curva plana (variação < 0,3 mag em mais de 20 dias) reprova como fonte constante ou artefato
+  (ZTF26acazneg: r 12,33-12,41 por 33 dias, só r, nada no Gaia a 26″, chegou como "7,8 mag de amplitude").
+
 ## [0.19.0] - 2026-11-10
 
 ### Mudado

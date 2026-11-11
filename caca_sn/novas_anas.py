@@ -41,6 +41,10 @@ MIN_AMPLITUDE = 2.0
 MIN_DETECCOES = 4
 MAX_DURACAO = 40.0
 MAX_COR = 1.0  # g-r acima disso = estrela vermelha variando, não CV
+# curva plana por semanas = fonte constante ou artefato (ZTF26acazneg, 11/2026: r 12,33-12,41 por 33 dias, só r,
+# nada no Gaia a 26″; uma nova anã sobe e cai magnitudes em dias)
+PLANA_DIAS = 20.0
+PLANA_MAG = 0.3
 ESTADO = "novas_anas_estado.json"
 SAIDA_JSON = "novas_anas.json"
 SAIDA_HTML = "novas_anas.html"
@@ -210,6 +214,9 @@ def reprovado(m: dict[str, Any]) -> str | None:
         return f"{m['deteccoes']} detecções"
     if m["duracao"] > MAX_DURACAO:
         return f"dura {m['duracao']:.0f} dias"
+    mags = [p[2] for p in m.get("curva") or []]
+    if m["duracao"] > PLANA_DIAS and mags and max(mags) - min(mags) < PLANA_MAG:
+        return f"curva plana ({max(mags) - min(mags):.2f} mag em {m['duracao']:.0f} dias): fonte constante ou artefato"
     if m["cor_gr"] is not None and m["cor_gr"] > MAX_COR:
         return f"vermelha (g-r {m['cor_gr']})"
     return None
