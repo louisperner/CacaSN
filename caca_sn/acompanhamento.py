@@ -5,15 +5,12 @@ detectam o objeto de novo, pelos nomes internos que o TNS guarda."""
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import time
-import urllib.parse
-import urllib.request
 from typing import Any, Callable
 
-from . import alertas, registro
+from . import alertas, registro, tns_api
 from .rede import get_json, gravar_json, ler_json
 
 ARQUIVO = "acompanhar.json"
@@ -54,14 +51,8 @@ def data_mjd(mjd: float) -> str:
 
 
 def tns_objeto(cfg: dict[str, Any], nome: str) -> dict[str, Any]:
-    """Registro do objeto no TNS (api/get/object)."""
-    marker = json.dumps({"tns_id": cfg["bot_id"], "type": "bot", "name": cfg["bot_name"]})
-    dados = urllib.parse.urlencode({"api_key": cfg["api_key"], "data": json.dumps({"objname": nome})}).encode()
-    req = urllib.request.Request(
-        "https://www.wis-tns.org/api/get/object", data=dados, headers={"User-Agent": "tns_marker" + marker}
-    )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r).get("data") or {}
+    """Registro do objeto no TNS (api/get/object), respeitando o limite de pedidos."""
+    return tns_api.pedir(cfg, "object", {"objname": nome}) or {}
 
 
 def situacao(obj: dict[str, Any]) -> dict[str, Any]:
