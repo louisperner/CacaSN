@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.20.1] - 2026-11-15
+
+### Corrigido
+- Novidades do TNS travadas: o TNS não publicou o arquivo diário de 2026-11-12 (404, enquanto 11, 13 e 14
+  existem) e a verificação, que processa os dias em ordem, parou nele de 13 a 15/11. Agora um dia que ainda
+  dá 404 depois de 2 dias é pulado (`novidades_dia_pulado` no log). Com os dados reais, 13 e 14/11 foram
+  processados e saíram 2 classificações raras presas (SN 2026afgl IIn, SN 2025agpz SLSN-II).
+
 ## [0.20.0] - 2026-11-11
 
 ### Corrigido
