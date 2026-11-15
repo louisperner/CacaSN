@@ -2,6 +2,7 @@ import io
 import os
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 from datetime import date
 from unittest import mock
@@ -115,6 +116,34 @@ class TesteRarosNovos(unittest.TestCase):
     def test_ia_comum_nao_avisa(self):
         d = {"name_prefix": "SN", "name": "2026x", "type": "SN Ia", "redshift": "0.03"}
         self.assertIsNone(novidades.destaque(d, set()))
+
+
+class TesteDiaSemArquivo(unittest.TestCase):
+    """2026-11-12: o TNS não publicou o arquivo do dia (404) e a verificação ficou travada 3 dias."""
+
+    def baixar(self, faltando):
+        def b(cfg, dia):
+            if dia in faltando:
+                raise urllib.error.HTTPError("u", 404, "Not Found", None, None)
+            return []
+
+        return b
+
+    def test_404_antigo_e_pulado(self):
+        from datetime import date
+
+        with tempfile.TemporaryDirectory() as d:
+            estado = {"ultimo_dia": "2026-11-11"}
+            novidades.dias_fechados({}, d, estado, set(), date(2026, 11, 15), self.baixar({date(2026, 11, 12)}))
+            self.assertEqual(estado["ultimo_dia"], "2026-11-14")
+
+    def test_404_recente_espera(self):
+        from datetime import date
+
+        with tempfile.TemporaryDirectory() as d:
+            estado = {"ultimo_dia": "2026-11-12"}
+            novidades.dias_fechados({}, d, estado, set(), date(2026, 11, 15), self.baixar({date(2026, 11, 14)}))
+            self.assertEqual(estado["ultimo_dia"], "2026-11-13")  # 14/11 pode sair ainda
 
 
 if __name__ == "__main__":

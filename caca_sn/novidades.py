@@ -126,6 +126,9 @@ def markdown(dia: date, r: dict[str, Any]) -> str:
     return "\n".join(linhas) + "\n\n"
 
 
+PULAR_404 = 2  # dias: arquivo diário que ainda dá 404 depois disso não sai mais
+
+
 def dias_fechados(
     cfg: dict[str, Any], pasta: str, estado: dict[str, Any], vistos: set[str], hoje: date, baixar: Any
 ) -> list[tuple[str, str]]:
@@ -137,6 +140,13 @@ def dias_fechados(
         try:
             r = resumir(baixar(cfg, dia), vistos)
         except Exception as e:
+            # o TNS às vezes não publica o arquivo de um dia (2026-11-12 deu 404 enquanto 11, 13 e 14 existiam);
+            # sem isto a verificação parava nesse dia para sempre. Passado PULAR_404 dias, o dia é pulado.
+            if getattr(e, "code", None) == 404 and (hoje - dia).days > PULAR_404:
+                registro.obter().warning("novidades_dia_pulado", dia=dia.isoformat(), erro=repr(e))
+                estado["ultimo_dia"] = dia.isoformat()
+                dia += timedelta(days=1)
+                continue
             registro.obter().warning("novidades_falhou", dia=dia.isoformat(), erro=repr(e))
             break
         with open(os.path.join(pasta, RESUMO), "a", encoding="utf-8") as f:
