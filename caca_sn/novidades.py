@@ -21,7 +21,7 @@ import zipfile
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from . import alertas, registro
+from . import alertas, registro, tns_api
 from .rede import gravar_json, ler_json
 
 URL = "https://www.wis-tns.org/system/files/tns_public_objects/tns_public_objects_{}.csv.zip"
@@ -71,10 +71,7 @@ def ler_csv(conteudo: bytes) -> list[dict[str, str]]:
 
 
 def _api(cfg: dict[str, Any], rota: str, dados: dict[str, Any]) -> Any:
-    corpo = urllib.parse.urlencode({"api_key": cfg["api_key"], "data": json.dumps(dados)}).encode()
-    req = urllib.request.Request(f"https://www.wis-tns.org/api/get/{rota}", data=corpo, headers={"User-Agent": _marker(cfg)})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r).get("data")
+    return tns_api.pedir(cfg, rota, dados)
 
 
 def buscar_modificados(cfg: dict[str, Any], desde: str) -> list[dict[str, str]]:

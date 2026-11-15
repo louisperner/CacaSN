@@ -2,6 +2,15 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.20.2] - 2026-11-15
+
+### Corrigido
+- Novidades do dia em andamento levavam 429 do TNS em toda rodada (46 vezes): o limite é 30 pedidos por
+  minuto por bot e o acompanhamento, logo antes, faz um pedido por descoberta (34). Novo `tns_api.pedir`
+  lê `x-rate-limit-remaining`/`-reset`, espera o reset quando sobram 2 pedidos e, num 429, espera e
+  tenta de novo (3 vezes). Acompanhamento e novidades passam a usá-lo. Teste real: 34 descobertas + o
+  dia em andamento sem nenhum 429 (as novidades levam ~3 min a mais, só na rodada de 3 h).
+
 ## [0.20.1] - 2026-11-15
 
 ### Corrigido
